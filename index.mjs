@@ -99,7 +99,6 @@ export function apply(ctx) {
       parameters: {
         cluster: {
           type: 'string',
-          required: false,
           description: '集群短名；省略时，若只有一个 profile 则自动选择，否则报错提示可选项。',
         },
       },
@@ -130,11 +129,11 @@ export function apply(ctx) {
         '按目标集群的约束生成合规的 Slurm 作业脚本（自动算 --mem、--gres、module load、离线环境变量，并在末尾写 exit $rc）。会写一个 <name>.slurm 到当前目录并返回上传/提交命令。',
       parameters: {
         name: { type: 'string', required: true, description: '作业名（slurm --job-name 和输出文件名）' },
-        accelerators: { type: 'string', required: false, description: '加速器数量，默认 1' },
-        cpus: { type: 'string', required: false, description: 'CPU 核数，默认 8' },
-        time: { type: 'string', required: false, description: '时长，默认 00:20:00，格式 HH:MM:SS 或 D-HH:MM:SS' },
-        cluster: { type: 'string', required: false, description: '集群短名；省略时若只有一个 profile 则自动选择' },
-        remote_user: { type: 'string', required: false, description: '远端用户名；与本地不同时填写（日志路径需要真实用户名）' },
+        accelerators: { type: 'string', description: '加速器数量，默认 1' },
+        cpus: { type: 'string', description: 'CPU 核数，默认 8' },
+        time: { type: 'string', description: '时长，默认 00:20:00，格式 HH:MM:SS 或 D-HH:MM:SS' },
+        cluster: { type: 'string', description: '集群短名；省略时若只有一个 profile 则自动选择' },
+        remote_user: { type: 'string', description: '远端用户名；与本地不同时填写（日志路径需要真实用户名）' },
       },
       output: {
         schema: { type: 'string' },
@@ -173,8 +172,8 @@ export function apply(ctx) {
         '在本地 macOS/Linux 上配置到超算集群的 SSH 连接：安装私钥到 ~/.ssh、写 ~/.ssh/config、测试连接。幂等，重复运行只补缺失项。会修改本机 SSH 配置，执行前应向用户确认私钥路径与集群。',
       parameters: {
         key_path: { type: 'string', required: true, description: '从超算平台控制台下载的私钥文件绝对路径（.txt 或 PEM 私钥）' },
-        cluster: { type: 'string', required: false, description: '集群短名；省略时若只有一个 profile 则自动选择' },
-        username: { type: 'string', required: false, description: '远端用户名；省略时尝试从私钥文件名推断' },
+        cluster: { type: 'string', description: '集群短名；省略时若只有一个 profile 则自动选择' },
+        username: { type: 'string', description: '远端用户名；省略时尝试从私钥文件名推断' },
       },
       output: {
         schema: { type: 'string' },
@@ -202,7 +201,7 @@ export function apply(ctx) {
         '探测一个已能 SSH 登录的集群（调度器、分区、内存、GRES、网络、登录节点 torch 可用性），生成可直接保存为 profile 的配置文本。结果需要写回 clusters/<短名>.conf 并补齐探测不到的项。',
       parameters: {
         target: { type: 'string', required: true, description: 'ssh 别名或主机名（须已能免密登录）' },
-        name: { type: 'string', required: false, description: '集群短名，默认与 target 相同' },
+        name: { type: 'string', description: '集群短名，默认与 target 相同' },
       },
       output: {
         schema: { type: 'string' },
