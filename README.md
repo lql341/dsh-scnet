@@ -34,6 +34,11 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 | scnet_setup_ssh | 配置本地到集群的 SSH 连接 |
 | scnet_probe_cluster | 探测新集群并生成 profile |
 
+## 文档
+
+- [INSTALL.md](./INSTALL.md) — 安装与验证
+- [TESTING.md](./TESTING.md) — 按风险排序的初步测试步骤
+
 ## 结构
 
 ```
@@ -43,9 +48,11 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 ├── index.mjs             # Cordis 入口，注册 5 个工具
 ├── skills/scnet-hpc/     # Agent Skill + clusters/scripts/references
 ├── sync.sh               # 从 canonical 仓库同步
-├── INSTALL.md            # 安装与验证说明
+├── README.md             # 项目说明
+├── INSTALL.md            # 安装与验证
+├── TESTING.md            # 初步测试步骤
 ├── LICENSE
-└── README.md
+└── .gitignore
 ```
 
 ## 同步
