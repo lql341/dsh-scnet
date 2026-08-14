@@ -8,19 +8,13 @@
 
 ## 安装
 
-```sh
-dsh plugin --profile web add "github:lql341/dsh-scnet#main"
-```
-
-或本地目录：
+推荐从 npm 安装：
 
 ```sh
-git clone https://github.com/lql341/dsh-scnet.git
-cd dsh-scnet
-dsh plugin --profile web add .
+dsh plugin --profile web add dsh-scnet
 ```
 
-> git 源安装会取源码而非构建产物；本插件入口是纯 JavaScript（无编译步骤），无需 allowBuilds。
+git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 
 ## 能力面
 
@@ -49,6 +43,8 @@ dsh plugin --profile web add .
 ├── index.mjs             # Cordis 入口，注册 5 个工具
 ├── skills/scnet-hpc/     # Agent Skill + clusters/scripts/references
 ├── sync.sh               # 从 canonical 仓库同步
+├── INSTALL.md            # 安装与验证说明
+├── LICENSE
 └── README.md
 ```
 
