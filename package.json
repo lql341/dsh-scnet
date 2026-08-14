@@ -9,6 +9,11 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "files": [
+    "index.mjs",
+    "cordis.patch.yml",
+    "skills"
+  ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
