@@ -14,11 +14,15 @@ set -- "${REST[@]+${REST[@]}}"
 
 # --user <名>：远端用户名与本地不同时指定（日志路径需要真实用户名）
 REMOTE_USER=""
+REFRESH=no
+USE_AUTO=yes
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --user) REMOTE_USER="${2:-}"; shift 2 ;;
         --user=*) REMOTE_USER="${1#*=}"; shift ;;
+        --refresh) REFRESH=yes; shift ;;
+        --no-auto) USE_AUTO=no; shift ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
@@ -31,7 +35,7 @@ TIME="${4:-00:20:00}"
 
 if [ -z "$NAME" ]; then
     cat >&2 <<EOF
-用法: $0 [--cluster <集群短名>] [--user <远端用户名>] <作业名> [加速器数] [cpu数] [时长]
+用法: $0 [--cluster <集群短名>] [--user <远端用户名>] [--refresh|--no-auto] <作业名> [加速器数] [cpu数] [时长]
 
 例子:
   $0 probe                    # 1 卡, 8 核, 20 分钟（探针）
@@ -42,6 +46,11 @@ EOF
     exit 1
 fi
 
+if [ "$REFRESH" = yes ]; then
+    "$REPO_ROOT/scripts/refresh-cluster.sh" --cluster "${CLUSTER:-}"
+fi
+
+export SCNET_HPC_USE_AUTO="$USE_AUTO"
 load_cluster "$CLUSTER"
 
 [ "${SCHEDULER:-slurm}" = "slurm" ] \
@@ -69,7 +78,7 @@ fi
 # 远端用户名。#SBATCH 是注释行，Slurm 不做变量展开 —— 日志路径里写 $USER
 # 会被当成字面量目录名，作业以 exit 53 失败且不产生日志。所以这里必须展开成
 # 真实用户名。默认取本地用户名，不同时用 --user 覆盖。
-REMOTE_USER="${REMOTE_USER:-$(whoami)}"
+REMOTE_USER="${REMOTE_USER:-${REMOTE_USER_DETECTED:-$(whoami)}}"
 HOME_DIR="${HOME_BASE}/${REMOTE_USER}"
 
 # 脚本体（非 #SBATCH 行）里可以正常用 $USER
@@ -137,6 +146,7 @@ sed -i.bak '/^$/N;/^\n$/D' "$OUT" 2>/dev/null && rm -f "$OUT.bak"
 
 echo "已生成 $OUT"
 echo "  集群=${CLUSTER_ID}  ${GRES_TYPE:-加速器}=${ACCEL}  CPU=${CPUS}  内存=${MEM_NOTE}  时长=${TIME}"
+echo "  分区=${PARTITION:-未设置}  节点数=${NODE_COUNT:-未探测}（来源：${NODE_COUNT_SOURCE:-profile/cache}）"
 echo "  日志目录=${HOME_DIR}/scripts/logs（用户名 ${REMOTE_USER}，不对请加 --user）"
 echo
 echo "上传并提交："

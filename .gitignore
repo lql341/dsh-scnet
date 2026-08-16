@@ -11,6 +11,7 @@ credentials*
 
 # 生成物
 *.slurm
+skills/scnet-hpc/clusters/.cache/
 
 # 备份
 *.bak

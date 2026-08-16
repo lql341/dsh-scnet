@@ -16,6 +16,25 @@ list_clusters() {
     find "$CLUSTER_DIR" -maxdepth 1 -name '*.conf' ! -name '_*' -exec basename {} .conf \; 2>/dev/null | sort
 }
 
+refresh_live_node_count() {
+    [ "${SCNET_HPC_LIVE_NODE_COUNT:-yes}" != "no" ] || return 0
+    [ "${SCHEDULER:-slurm}" = "slurm" ] || return 0
+    [ -n "${CLUSTER_ID:-}" ] || return 0
+    [ -n "${PARTITION:-}" ] || return 0
+
+    local live
+    live=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
+        "$CLUSTER_ID" "scontrol show partition ${PARTITION}" 2>/dev/null \
+        | tr ' ' '\n' | sed -n 's/^TotalNodes=//p' | head -1)
+
+    if [[ "$live" =~ ^[0-9]+$ ]] && [ "$live" -gt 0 ]; then
+        NODE_COUNT="$live"
+        NODE_COUNT_SOURCE="live"
+    else
+        NODE_COUNT_SOURCE="${NODE_COUNT_SOURCE:-profile/cache}"
+    fi
+}
+
 load_cluster() {
     local want="${1:-}"
     local available
@@ -45,11 +64,32 @@ $(printf '%s\n' "$available" | sed 's/^/  /')"
     . "$conf"
 
     [ -n "${CLUSTER_ID:-}" ] || die "$conf 里 CLUSTER_ID 为空"
-    [ -n "${SSH_HOST:-}" ]   || die "$conf 里 SSH_HOST 为空"
     : "${SSH_PORT:=22}"
     : "${HOME_BASE:=/public/home}"
 
+    # SSH_HOST/SSH_PORT 应以 profile 为准。这里只作为兼容回退：
+    # 旧 profile 漏填时，从本机 ~/.ssh/config 动态补全，避免脚本直接失败。
+    if [ -z "${SSH_HOST:-}" ]; then
+        SSH_HOST="$(ssh -G "$CLUSTER_ID" 2>/dev/null | awk '/^hostname /{print $2; exit}')"
+    fi
+    if [ -z "${SSH_PORT:-}" ]; then
+        SSH_PORT="$(ssh -G "$CLUSTER_ID" 2>/dev/null | awk '/^port /{print $2; exit}')"
+    fi
+    REMOTE_USER_DETECTED="$(ssh -G "$CLUSTER_ID" 2>/dev/null | awk '/^user /{print $2; exit}')"
+    : "${REMOTE_USER_DETECTED:=}"
+
+    # 用于设置新连接的新集群仍需明确的 SSH_HOST/SSH_PORT；已有本机 ssh 别名时
+    # 这里会从 ssh -G 补齐。若仍为空，给一个可操作的错误。
+    [ -n "$SSH_HOST" ] || die "$conf 里 SSH_HOST 为空，且 ssh -G ${CLUSTER_ID} 也解析不到 HostName；请先配置 ~/.ssh/config 或补 profile。"
+
     CLUSTER_CONF="$conf"
+    CLUSTER_AUTO_CONF="$CLUSTER_DIR/.cache/$want.auto.conf"
+    if [ "${SCNET_HPC_USE_AUTO:-yes}" != "no" ] && [ -f "$CLUSTER_AUTO_CONF" ]; then
+        # shellcheck disable=SC1090
+        . "$CLUSTER_AUTO_CONF"
+    fi
+
+    refresh_live_node_count
 }
 
 # 从参数里摘出 --cluster <名>，剩下的放进 REST[]

@@ -1,6 +1,6 @@
 # 安装 dsh-scnet
 
-`dsh-scnet` 是一个 DeepSeek Harness（DSH）bundle 插件，把国产超算集群使用规范打包成 skill 和 5 个工具。
+`dsh-scnet` 是一个 DeepSeek Harness（DSH）bundle 插件，把国产超算集群使用规范打包成 skill 和 7 个工具。
 
 ## 前置条件
 

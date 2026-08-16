@@ -1,10 +1,10 @@
 <h1 align="center">dsh-scnet</h1>
 
-<p align="center">在 DeepSeek Harness 里操作超算互联网（scnet.cn）及同类国产超算集群：配 SSH、生成 Slurm 作业、探测集群、排查失败，附海光 DCU/DTK 知识。</p>
+<p align="center">在 DeepSeek Harness 里操作超算互联网（scnet.cn）及同类国产超算集群：配 SSH、生成 Slurm 作业、探测/刷新集群、运行计算节点探针、排查失败，附海光 DCU/DTK 知识。</p>
 
 ## 这是什么
 
-一个 DeepSeek Harness 官方 bundle 插件，把 `scnet-hpc` 的 Agent Skill 和 bash 脚本包装成 DSH 可安装包。装好后 DSH 模型在涉及超算集群、Slurm 作业、海光 DCU/DTK 时会加载对应 skill，并可调用工具完成确定性操作。
+一个 DeepSeek Harness bundle 插件，把 `scnet-hpc` 的 Agent Skill 和 bash 脚本包装成 DSH 可安装包。装好后 DSH 模型在涉及超算集群、Slurm 作业、海光 DCU/DTK 时会加载对应 skill，并可调用工具完成确定性操作。
 
 ## 安装
 
@@ -33,6 +33,8 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 | scnet_generate_job | 按 profile 生成合规 Slurm 作业脚本 |
 | scnet_setup_ssh | 配置本地到集群的 SSH 连接 |
 | scnet_probe_cluster | 探测新集群并生成 profile |
+| scnet_refresh_cluster | 动态刷新已有集群的规则缓存 |
+| scnet_run_compute_probe | 在计算节点运行最小能力探针 |
 
 ## 文档
 
@@ -45,7 +47,7 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 .
 ├── package.json          # dsh.bundle + dsh.skills
 ├── cordis.patch.yml      # bundle 组合层
-├── index.mjs             # Cordis 入口，注册 5 个工具
+├── index.mjs             # Cordis 入口，注册 7 个工具
 ├── skills/scnet-hpc/     # Agent Skill + clusters/scripts/references
 ├── sync.sh               # 从 canonical 仓库同步
 ├── README.md             # 项目说明
@@ -65,13 +67,16 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 ```
 
 只改 canonical，本仓库跑 sync 更新；不要把 `skills/scnet-hpc/` 当手工维护目录。
+`sync.sh` 会自动排除 `scripts/install.sh` 和 `clusters/.cache/`，避免把安装脚本或本机动态缓存打进发布包。
 
 ## 隐私与安全
 
 - 仓库不含私钥、token、用户名、密钥指纹。
 - `scnet_setup_ssh` 会写入 `~/.ssh/`，调用前确认私钥路径和集群。
 - `scnet_generate_job` 生成的 `.slurm` 可能含本机用户名，`.gitignore` 已排除。
-- 集群主机名/端口是平台公开信息；profile 中连接字段默认留空，由用户本地填写。
+- 集群主机名/端口是平台公开信息，由 canonical 仓库维护。
+- `scnet_refresh_cluster` / `scnet_run_compute_probe` 会 SSH 到远端并可能提交作业；运行前确认集群和副作用。
+- `clusters/.cache/` 是本机动态探测缓存，`.gitignore` 已排除，不应提交。
 
 ## License
 

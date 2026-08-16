@@ -54,8 +54,9 @@ sbatch: error: QOSMinGRES
 
 三种可能：
 
-1. **在登录节点跑 torch** —— 登录节点缺 `libmsgpackc.so.2`，即使 `module load`
-   之后也 import 不了。必须用 `srun`/`sbatch`。
+1. **在登录节点跑 torch** —— 郑州集群最近实测是缺 `libgalaxyhip.so.5`，旧环境
+   报过 `libmsgpackc.so.2`；即使 `module load` 之后也 import 不了。必须用
+   `srun`/`sbatch`。
 2. **忘了 `module load`** —— venv 激活前必须先
    `module load compiler/gcc/9.3.0 compiler/dtk/26.04`。
 3. **顺序错了** —— 先激活 venv 再 module load 也会失败，顺序必须是 module 在前。
@@ -83,6 +84,14 @@ httpcore.ConnectError: [Errno -2] Name or service not known
 Triton。DTK 26.04 的 HIP 运行时缺上游 ROCm 7 的 API，Triton 的 AMD backend 加载
 即失败。**放弃这条路**，包括所有依赖 Triton kernel 的框架（SGLang FP8、vLLM ROCm
 MoE、transformers finegrained-fp8）。
+
+郑州集群最近还会先报另一种缺库：
+
+```
+ImportError: libgcvm.so.17git: cannot open shared object file
+```
+
+本质相同，都是 Triton 在当前 DTK/DCU 软件栈上不可用，不要继续调 Triton kernel。
 
 ### `torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+`
 
@@ -126,6 +135,24 @@ ROCM_PATH=未设置
 `scripts/new-job.sh` 生成的脚本已经用 `bash -l`。
 
 自检：作业里打印 `echo "ROCM_PATH=${ROCM_PATH:-未设置}"`，未设置就说明没生效。
+
+### `python3: command not found`（昆山计算节点）
+
+昆山计算节点 `module purge` 后没有 `python3` 命令，裸 `python` 是 Python 2，
+会再报：
+
+```
+SyntaxError: Non-ASCII character '\xe5' ... no encoding declared
+```
+
+修法：作业脚本里显式加载 Python 3 module：
+
+```bash
+module load python/3.8.10
+```
+
+`scripts/run-compute-probe.sh` 会自动从 `module avail` 探测 `python/3.*` 模块，
+但普通业务作业仍需在 `MODULE_LOADS` 或 `PYTHON_MODULE` 里带上。
 
 ### `TIMEOUT`
 

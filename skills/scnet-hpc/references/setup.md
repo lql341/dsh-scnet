@@ -87,7 +87,9 @@ ssh -O exit <集群>      # 手工断开（网络切换后卡住时用）
 `<用户名>_<主机>_RsaKeyExpireTime_2026-10-29_12-51-40.txt` 表示 2026-10-29 过期。
 到期前从控制台重新下载并重跑 setup 脚本。
 
-profile 里的 `KEY_NAME_MARKER` 就是用来从这种文件名里提取用户名的。
+profile 里的 `KEY_NAME_MARKER` 就是用来从这种文件名里提取用户名的；公开
+`scnet-hpc` profile 使用 `_<CLUSTER_HOST>_` 占位符，所以安装时通常需要显式传
+用户名，或在本地私有 profile 中补齐真实标记。
 
 查看当前密钥指纹：
 

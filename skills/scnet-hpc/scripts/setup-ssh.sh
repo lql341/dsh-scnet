@@ -28,7 +28,9 @@ EOF
     exit 1
 fi
 
+SCNET_HPC_LIVE_NODE_COUNT=no
 load_cluster "$CLUSTER"
+unset SCNET_HPC_LIVE_NODE_COUNT
 
 [ -f "$KEY_SRC" ] || die "找不到私钥文件: $KEY_SRC"
 grep -q "BEGIN.*PRIVATE KEY" "$KEY_SRC" \

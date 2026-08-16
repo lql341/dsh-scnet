@@ -134,6 +134,8 @@ export function apply(ctx) {
         time: { type: 'string', description: '时长，默认 00:20:00，格式 HH:MM:SS 或 D-HH:MM:SS' },
         cluster: { type: 'string', description: '集群短名；省略时若只有一个 profile 则自动选择' },
         remote_user: { type: 'string', description: '远端用户名；与本地不同时填写（日志路径需要真实用户名）' },
+        refresh: { type: 'boolean', description: '是否在生成前运行 refresh-cluster.sh 刷新动态规则（默认否）' },
+        no_auto: { type: 'boolean', description: '是否忽略 clusters/.cache/*.auto.conf 动态缓存（默认否）' },
       },
       output: {
         schema: { type: 'string' },
@@ -153,14 +155,47 @@ export function apply(ctx) {
         if (cluster) argv.push('--cluster', cluster)
         const remoteUser = String(args.remote_user || '').trim()
         if (remoteUser) argv.push('--user', remoteUser)
+        if (args.refresh === true) argv.push('--refresh')
+        if (args.no_auto === true) argv.push('--no-auto')
         argv.push(nameVal)
         if (accelerators) argv.push(accelerators.value)
         if (cpus) argv.push(cpus.value)
         if (args.time && String(args.time).trim()) argv.push(String(args.time).trim())
 
-        const res = await runBash(join(SCRIPTS_DIR, 'new-job.sh'), argv, 30000)
+        const timeoutMs = args.refresh === true ? 240000 : 30000
+        const res = await runBash(join(SCRIPTS_DIR, 'new-job.sh'), argv, timeoutMs)
         if (res.ok) return res.stdout.trim() || res.stderr.trim()
         return `生成失败（exit ${res.code}）：\n${res.stderr.trim() || res.stdout.trim()}`
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_refresh_cluster',
+      description:
+        '动态刷新指定集群的规则缓存（分区、内存、GRES、网络、登录节点缺库等）。默认只做登录节点只读探测；compute=true 会额外提交一个约 10 分钟的计算节点能力探针，会 SSH 到远端并写 clusters/.cache/<短名>.auto.conf。',
+      parameters: {
+        cluster: { type: 'string', description: '集群短名；省略时若只有一个 profile 则自动选择' },
+        compute: { type: 'boolean', description: '是否额外提交计算节点能力探针（默认否）' },
+        dry_run: { type: 'boolean', description: '只输出将要写入的缓存，不落盘（默认否）' },
+      },
+      timeoutMs: 900000,
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const argv = []
+        const cluster = String(args.cluster || '').trim()
+        if (cluster) argv.push('--cluster', cluster)
+        if (args.compute === true) argv.push('--compute')
+        if (args.dry_run === true) argv.push('--dry-run')
+
+        const timeoutMs = args.compute === true ? 900000 : 240000
+        const res = await runBash(join(SCRIPTS_DIR, 'refresh-cluster.sh'), argv, timeoutMs)
+        if (res.ok) return res.stdout.trim() || res.stderr.trim()
+        return `刷新失败（exit ${res.code}）：\n${res.stderr.trim() || res.stdout.trim()}`
       },
     }),
   )
@@ -190,6 +225,46 @@ export function apply(ctx) {
         const res = await runBash(join(SCRIPTS_DIR, 'setup-ssh.sh'), argv, 90000)
         const out = `${res.stdout.trim()}\n${res.stderr.trim()}`.trim()
         return out || `setup-ssh.sh 退出码 ${res.code}，但没有输出。`
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_run_compute_probe',
+      description:
+        '在已配置 SSH 的集群计算节点上运行最小能力探针，输出 PROBE_ 开头的结果（加速器架构、FP8、Triton、bitsandbytes、外网等）。会提交一个 1 卡、4 核、10 分钟的小作业并等待完成。',
+      parameters: {
+        cluster: { type: 'string', required: true, description: '集群短名' },
+        accelerators: { type: 'string', description: '加速器数量，默认 1' },
+        cpus: { type: 'string', description: 'CPU 核数，默认 4' },
+        time: { type: 'string', description: '作业时长，默认 00:10:00' },
+        remote_user: { type: 'string', description: '远端用户名；与本地不同时填写' },
+      },
+      timeoutMs: 900000,
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const cluster = String(args.cluster || '').trim()
+        if (!cluster) return '缺少必填参数 cluster。'
+
+        const accelerators = positiveInt(args.accelerators, 'accelerators')
+        if (accelerators && accelerators.error) return accelerators.error
+        const cpus = positiveInt(args.cpus, 'cpus')
+        if (cpus && cpus.error) return cpus.error
+
+        const argv = ['--cluster', cluster]
+        const remoteUser = String(args.remote_user || '').trim()
+        if (remoteUser) argv.push('--user', remoteUser)
+        if (cpus) argv.push('--cpus', cpus.value)
+        if (args.time && String(args.time).trim()) argv.push('--time', String(args.time).trim())
+        if (accelerators) argv.push('--accelerators', accelerators.value)
+
+        const res = await runBash(join(SCRIPTS_DIR, 'run-compute-probe.sh'), argv, 900000)
+        if (res.ok) return res.stdout.trim()
+        return `计算节点探针失败（exit ${res.code}）：\n${res.stderr.trim() || res.stdout.trim()}`
       },
     }),
   )

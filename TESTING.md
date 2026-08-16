@@ -55,5 +55,7 @@ DEEPSEEK_API_KEY: sk-你的key
 | 3 | 用 scnet_generate_job 生成一个 probe 作业 | 生成 `.slurm` 并给出上传命令 | 只写当前目录 |
 | 4 | 用 scnet_setup_ssh 配置连接 | 需要真实私钥，会改 `~/.ssh` | 中 |
 | 5 | 用 scnet_probe_cluster 探测集群 | 需要真实集群，会 SSH 到远端 | 中 |
+| 6 | 用 scnet_refresh_cluster dry_run=true 刷新规则 | 输出即将写入的缓存，不落盘 | 中（会 SSH） |
+| 7 | 用 scnet_run_compute_probe 跑计算节点探针 | 返回 PROBE_ 结果 | 高（提交作业并等待） |
 
-第 4、5 步只有在你有私钥和目标集群时才测，测前确认副作用。
+第 4 至 7 步只有在你有私钥和目标集群时才测，测前确认副作用。

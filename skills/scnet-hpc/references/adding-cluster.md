@@ -45,6 +45,9 @@ EOF
 
 profile 末尾的注释列出了还需确认的。主要是：
 
+**`SSH_HOST` / `SSH_PORT`** —— 固定连接参数，应写死。本机已配置 SSH 别名时，
+可用 `ssh -G <别名>` 查出 `hostname` 和 `port` 后填进 profile。
+
 **加速器型号和架构** —— 在计算节点跑：
 
 ```bash
@@ -68,8 +71,11 @@ srun -p <分区> --gres=gpu:1 --time=00:05:00 nvidia-smi --query-gpu=name --form
 删掉第 2 步的临时段，然后：
 
 ```bash
-./scripts/setup-ssh.sh --cluster <集群短名> <私钥文件>
+./scripts/setup-ssh.sh --cluster <集群短名> <私钥文件> <用户名>
 ```
+
+公开 profile 使用占位符时，`<用户名>` 必须显式传入；如果已在本地私有 profile
+里填了真实 `KEY_NAME_MARKER`，可以省略。
 
 ### 6. 实测加速器能力，写回 profile
 
@@ -121,6 +127,10 @@ Triton 尤其值得测：**它不可用会连带否掉一大批推理框架**（
 vLLM 的 ROCm MoE 后端、transformers 的 finegrained-fp8）。提前知道能避免在框架
 适配上白费时间。
 
+已有集群后续不必重跑完整流程，可用
+`./scripts/refresh-cluster.sh --cluster <集群短名> --compute` 动态刷新调度器、
+内存、分区、网络和计算节点能力，结果写到 `clusters/.cache/<集群短名>.auto.conf`。
+
 ## profile 字段速查
 
 必填三项：`CLUSTER_ID`、`SSH_HOST`、`SSH_PORT`。其余留空则脚本跳过、文档显示为未探测。
@@ -133,7 +143,9 @@ vLLM 的 ROCm MoE 后端、transformers 的 finegrained-fp8）。提前知道能
 | `GRES_TYPE` | `new-job.sh` | 生成的脚本不含 `--gres` |
 | `DEF_MEM_PER_CPU` | `new-job.sh` | 生成的脚本不含 `--mem`，需手填 |
 | `MODULE_LOADS` | `new-job.sh` | 生成的脚本不含 `module load` |
+| `PYTHON_MODULE` | `run-compute-probe.sh` | 计算节点缺 python3 时可能找不到解释器 |
 | `DEFAULT_VENV` | `new-job.sh` | 生成的脚本不含 venv 激活 |
+| `NODE_COUNT` | 运行时回退 | 实时查 TotalNodes 失败时使用该值 |
 | `KEY_NAME_MARKER` | `setup-ssh.sh` | 无法从文件名推断用户名，需显式传 |
 | `NEEDS_UPDATE_HOSTKEYS_NO` | `setup-ssh.sh` | 不写 `UpdateHostKeys no` |
 | `COMPUTE_NODE_OFFLINE` | `new-job.sh` | 不设 `HF_HUB_OFFLINE` |

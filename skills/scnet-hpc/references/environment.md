@@ -16,6 +16,14 @@ ssh <集群> 'sinfo -p <分区> -o "%n %c %m %G %t"'  # 每节点 CPU/内存/GRE
 ssh <集群> 'sacctmgr show qos where name=<QOS名> format=Name,MinTRES%30,MaxTRES%30 -P'
 ```
 
+也可以用 skill 自带的动态刷新，登录节点只读探测不会提交作业：
+
+```bash
+./scripts/refresh-cluster.sh --cluster <集群短名> --dry-run
+```
+
+其中分区节点数 `NODE_COUNT` 默认每次加载集群时实时查询 `TotalNodes`。
+
 节点状态含义：`idle` 空闲、`mix` 部分占用、`alloc` 全占、`drain`/`drng` 不可调度
 （维护中）。实际可用节点常少于总数。
 
@@ -54,6 +62,12 @@ source ~/<DEFAULT_VENV>/bin/activate
 
 ```
 ImportError: libgalaxyhip.so.5: cannot open shared object file
+```
+
+昆山计算节点默认没有 `python3` 命令，需额外加载：
+
+```bash
+module load python/3.8.10
 ```
 
 ## 厂商预编译的 wheel

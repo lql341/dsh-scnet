@@ -2,7 +2,8 @@
 # 从 canonical scnet-hpc 仓库同步 skill 内容到本仓库的 skills/scnet-hpc/。
 #
 # 默认源：../skills/scnet-hpc（本地同目录）；也可用 --src <路径> 指定。
-# 只同步 SKILL.md、clusters/、references/ 和 scripts/（排除 install.sh）。
+# 只同步 SKILL.md、clusters/、references/ 和 scripts/（排除 install.sh 和
+# clusters/.cache 动态缓存，缓存属于本机运行结果，不应打进发布包）。
 # SKILL.md 会做 DSH 适配：去掉 Claude Code 专用的 install.sh 安装说明。
 
 set -euo pipefail
@@ -29,12 +30,14 @@ awk '
   /^## 换机器$/ {
     print
     print ""
-    print "本插件已随 DeepSeek Harness 安装，换机器时用 `dsh plugin --profile web add` 重装即可。"
+    print "本插件已随 DeepSeek Harness 安装，换机器时用 `dsh plugin --profile web add dsh-scnet` 重装即可。"
     print "配置集群连接："
     print ""
     print "```bash"
-    print "./scripts/setup-ssh.sh <私钥文件>              # 配连接（自动读唯一的 profile）"
+    print "./scripts/setup-ssh.sh --cluster <集群短名> <私钥文件> <用户名>"
     print "```"
+    print ""
+    print "只有一个 profile 时可省略 `--cluster`；公开 profile 里的 `KEY_NAME_MARKER` 是占位符，所以需要显式传用户名。"
     in_replace = 1
     next
   }
@@ -45,10 +48,11 @@ awk '
 
 rm -rf "$DST/clusters" "$DST/references" "$DST/scripts"
 cp -R "$SRC/clusters" "$DST/clusters"
+rm -rf "$DST/clusters/.cache"
 cp -R "$SRC/references" "$DST/references"
 
 mkdir -p "$DST/scripts"
-for f in _common.sh new-job.sh setup-ssh.sh probe-cluster.sh; do
+for f in _common.sh new-job.sh setup-ssh.sh probe-cluster.sh refresh-cluster.sh run-compute-probe.sh compute-probe.py; do
   [ -f "$SRC/scripts/$f" ] && cp "$SRC/scripts/$f" "$DST/scripts/$f"
 done
 chmod +x "$DST/scripts/"*.sh
