@@ -24,6 +24,14 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 |---|---|
 | scnet-hpc | 国产超算使用规范：连接、提交/监控、调试、失败排查、海光 DCU/DTK 资源索引 |
 
+### 内置集群
+
+| 短名 | 描述 | 加速器 |
+|---|---|---|
+| zzeshell | 超算互联网 · 郑州 | 海光 BW1000 DCU (gfx936) ×8, 64GB/卡 |
+| kseshell | 超算互联网 · 昆山 | 海光 Z100 DCU (gfx906) ×4, 16GB/卡 |
+| wuzhshell | 超算互联网 · 乌镇 | 海光 Z100 DCU (gfx906) ×4, 16GB/卡 |
+
 ### Tools
 
 | 工具 | 说明 |
@@ -48,7 +56,13 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 ├── package.json          # dsh.bundle + dsh.skills
 ├── cordis.patch.yml      # bundle 组合层
 ├── index.mjs             # Cordis 入口，注册 7 个工具
-├── skills/scnet-hpc/     # Agent Skill + clusters/scripts/references
+├── skills/scnet-hpc/
+│   ├── clusters/
+│   │   ├── zzeshell.conf
+│   │   ├── kseshell.conf
+│   │   └── wuzhshell.conf
+│   ├── scripts/
+│   └── references/
 ├── sync.sh               # 从 canonical 仓库同步
 ├── README.md             # 项目说明
 ├── INSTALL.md            # 安装与验证
