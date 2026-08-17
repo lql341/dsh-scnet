@@ -1,6 +1,6 @@
 {
   "name": "dsh-scnet",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "DeepSeek Harness bundle plugin for SCNet (scnet.cn) and similar domestic HPC clusters: SSH setup, Slurm job generation, cluster probing/refresh, compute-node capability probes, and Hygon DCU/DTK guidance.",
   "type": "module",
   "main": "./index.mjs",
