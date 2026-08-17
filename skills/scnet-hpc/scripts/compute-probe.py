@@ -104,11 +104,12 @@ try:
 except Exception:
     emit("NET_PYPI", "OFFLINE")
 
-# /tmp 是否跨节点共享无法只靠单节点可靠判断，这里只记录文件系统信息
+# 测试任务统一使用家目录中的 TMPDIR；记录实际路径，确认规则生效。
 try:
-    emit("TMP_FSTYPE", str(os.statvfs("/tmp").f_fsid))
+    tmp_dir = os.environ.get("TMPDIR", "")
+    emit("TMPDIR", tmp_dir)
+    emit("TMP_IN_HOME", "1" if tmp_dir and os.path.commonpath([os.path.expanduser("~"), tmp_dir]) == os.path.expanduser("~") else "0")
 except Exception as exc:
-    emit("TMP_FSTYPE", "ERR:" + short_error(exc))
-emit("TMP_SHARED", "UNKNOWN")
+    emit("TMPDIR", "ERR:" + short_error(exc))
 
 print("PROBE_EXIT=0", flush=True)
