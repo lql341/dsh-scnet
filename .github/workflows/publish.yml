@@ -51,7 +51,8 @@ jobs:
           git add package.json
           git commit -m "chore: release ${NEW_VERSION}"
           git tag "${NEW_VERSION}"
-          git push origin HEAD:main --follow-tags
+          git push origin HEAD:main
+          git push origin "${NEW_VERSION}"
 
       - name: Publish to npm
         run: npm publish --access public
