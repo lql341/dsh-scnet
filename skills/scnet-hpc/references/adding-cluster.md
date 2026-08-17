@@ -82,6 +82,10 @@ srun -p <分区> --gres=gpu:1 --time=00:05:00 nvidia-smi --query-gpu=name --form
 **这一步别省。** 国产加速器的软件栈往往落后于上游，很多想当然的能力并不存在。
 花 5 分钟测清楚，能省掉后面几天的困惑。
 
+所有探针和测试任务的临时文件必须放在共享家目录中，例如
+`$HOME/.scnet-hpc/tmp/$SLURM_JOB_ID`。不要使用 `/tmp` 或从根目录创建临时目录；作业
+启动后应导出 `TMPDIR`、`TMP`、`TEMP` 指向该目录。
+
 用一个探针作业测这些：
 
 ```python

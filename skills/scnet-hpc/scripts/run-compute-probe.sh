@@ -42,7 +42,8 @@ load_cluster "$CLUSTER"
 
 REMOTE_USER="${REMOTE_USER:-${REMOTE_USER_DETECTED:-$(whoami)}}"
 HOME_DIR="${HOME_BASE}/${REMOTE_USER}"
-PROBE_BASE="${HOME_DIR}/scnet-hpc-probe"
+PROBE_DIR="${HOME_DIR}/.scnet-hpc/probes"
+PROBE_BASE="${PROBE_DIR}/compute-probe"
 
 ssh_cmd() { ssh -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "$@"; }
 scp_cmd() { scp -o BatchMode=yes -o ConnectTimeout=20 "$@"; }
@@ -95,6 +96,13 @@ module purge
 ${MODULE_LINE}
 ${PYTHON_MODULE_LINE}
 ${VENV_LINE}
+
+# 探针临时文件必须位于共享家目录，不能使用计算节点本地 /tmp。
+JOB_TMPDIR="${HOME_DIR}/.scnet-hpc/tmp/\${SLURM_JOB_ID:-manual-\$\$}"
+mkdir -p "\$JOB_TMPDIR"
+export TMPDIR="\$JOB_TMPDIR"
+export TMP="\$JOB_TMPDIR"
+export TEMP="\$JOB_TMPDIR"
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 
@@ -115,7 +123,7 @@ echo "PROBE_EXIT=\$rc"
 exit \$rc
 EOF
 
-ssh_cmd "$CLUSTER_ID" "mkdir -p ${HOME_DIR}/scripts/logs"
+ssh_cmd "$CLUSTER_ID" "mkdir -p ${HOME_DIR}/scripts/logs ${PROBE_DIR} ${HOME_DIR}/.scnet-hpc/tmp"
 scp_cmd -q "$TMPDIR_LOCAL/compute-probe.py" "${CLUSTER_ID}:${PROBE_BASE}.py"
 scp_cmd -q "$TMPDIR_LOCAL/probe.slurm" "${CLUSTER_ID}:${PROBE_BASE}.slurm"
 
@@ -129,4 +137,4 @@ else
     printf '%s\n' "$ERR" >&2
 fi
 
-ssh_cmd "$CLUSTER_ID" "rm -f ${PROBE_BASE}.py ${PROBE_BASE}.slurm ${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.out ${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.err"
+ssh_cmd "$CLUSTER_ID" "rm -f ${PROBE_BASE}.py ${PROBE_BASE}.slurm ${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.out ${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.err; rm -rf ${HOME_DIR}/.scnet-hpc/tmp/${JOBID}"

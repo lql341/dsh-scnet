@@ -119,6 +119,13 @@ module purge
 ${MODULES}
 ${VENV_LINE}
 
+# 集群测试/作业的临时文件统一放共享家目录，不使用节点本地 /tmp。
+JOB_TMPDIR="${HOME_DIR}/.scnet-hpc/tmp/\${SLURM_JOB_ID:-manual-\$\$}"
+mkdir -p "\$JOB_TMPDIR"
+export TMPDIR="\$JOB_TMPDIR"
+export TMP="\$JOB_TMPDIR"
+export TEMP="\$JOB_TMPDIR"
+
 ${OFFLINE_LINES}
 
 echo "### node=\$(hostname) jobid=\$SLURM_JOB_ID"
