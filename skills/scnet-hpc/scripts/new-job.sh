@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 生成一个符合目标集群所有约束的作业脚本骨架。
 #
-#   ./new-job.sh [--cluster <集群短名>] <作业名> [加速器数] [cpu数] [时长]
+#   ./new-job.sh [--cluster <集群短名>] [--cpu-only] [--partition <分区>] \
+#     <作业名> [加速器数] [cpu数] [时长]
 #
 # 内存按 cpus × DEF_MEM_PER_CPU 自动取安全值，避免手算出错。
 
@@ -16,11 +17,16 @@ set -- "${REST[@]+${REST[@]}}"
 REMOTE_USER=""
 REFRESH=no
 USE_AUTO=yes
+CPU_ONLY=no
+PARTITION_OVERRIDE=""
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
-        --user) REMOTE_USER="${2:-}"; shift 2 ;;
+        --user) [ $# -ge 2 ] || die "--user 缺少参数"; REMOTE_USER="$2"; shift 2 ;;
         --user=*) REMOTE_USER="${1#*=}"; shift ;;
+        --partition) [ $# -ge 2 ] || die "--partition 缺少参数"; PARTITION_OVERRIDE="$2"; shift 2 ;;
+        --partition=*) PARTITION_OVERRIDE="${1#*=}"; shift ;;
+        --cpu-only) CPU_ONLY=yes; shift ;;
         --refresh) REFRESH=yes; shift ;;
         --no-auto) USE_AUTO=no; shift ;;
         *) ARGS+=("$1"); shift ;;
@@ -35,15 +41,30 @@ TIME="${4:-00:20:00}"
 
 if [ -z "$NAME" ]; then
     cat >&2 <<EOF
-用法: $0 [--cluster <集群短名>] [--user <远端用户名>] [--refresh|--no-auto] <作业名> [加速器数] [cpu数] [时长]
+用法: $0 [--cluster <集群短名>] [--user <远端用户名>] [--cpu-only]
+       [--partition <分区>] [--refresh|--no-auto] <作业名> [加速器数] [cpu数] [时长]
 
 例子:
   $0 probe                    # 1 卡, 8 核, 20 分钟（探针）
   $0 infer 8 32 01:30:00      # 8 卡, 32 核, 1.5 小时（大模型）
+  $0 --cpu-only build 0 32 01:00:00  # 使用 profile 的 CPU 分区，不申请加速器
 
 可用集群: $(list_clusters | tr '\n' ' ')
 EOF
     exit 1
+fi
+
+[[ "$NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] \
+    || die "作业名只允许 1-64 个字母、数字、点、下划线或连字符，且必须以字母或数字开头"
+[[ "$ACCEL" =~ ^[0-9]+$ ]] || die "加速器数必须是非负整数"
+[[ "$CPUS" =~ ^[1-9][0-9]*$ ]] || die "CPU 数必须是正整数"
+[[ "$TIME" =~ ^([0-9]+-)?[0-9]{1,2}:[0-9]{2}:[0-9]{2}$ ]] \
+    || die "时长格式应为 HH:MM:SS 或 D-HH:MM:SS"
+if [ -n "$REMOTE_USER" ]; then
+    [[ "$REMOTE_USER" =~ ^[A-Za-z0-9._-]+$ ]] || die "远端用户名包含不安全字符"
+fi
+if [ -n "$PARTITION_OVERRIDE" ]; then
+    [[ "$PARTITION_OVERRIDE" =~ ^[A-Za-z0-9._-]+$ ]] || die "分区名包含不安全字符"
 fi
 
 if [ "$REFRESH" = yes ]; then
@@ -55,6 +76,17 @@ load_cluster "$CLUSTER"
 
 [ "${SCHEDULER:-slurm}" = "slurm" ] \
     || die "暂只支持 slurm，${CLUSTER_ID} 用的是 ${SCHEDULER}"
+
+if [ "$CPU_ONLY" = yes ]; then
+    [ -n "${PARTITION_CPU:-}" ] \
+        || die "${CLUSTER_ID} profile 未定义 PARTITION_CPU，不能使用 --cpu-only"
+    EFFECTIVE_PARTITION="${PARTITION_OVERRIDE:-$PARTITION_CPU}"
+    ACCEL=0
+    [ -n "${DEF_MEM_PER_CPU_CPU:-}" ] && DEF_MEM_PER_CPU="$DEF_MEM_PER_CPU_CPU"
+else
+    EFFECTIVE_PARTITION="${PARTITION_OVERRIDE:-${PARTITION:-}}"
+fi
+[ -n "$EFFECTIVE_PARTITION" ] || die "目标分区为空，请补 profile 或使用 --partition"
 
 # 内存上限 = cpus × DEF_MEM_PER_CPU，留 1GB 余量避免边界抖动
 if [ -n "${DEF_MEM_PER_CPU:-}" ]; then
@@ -70,15 +102,19 @@ fi
 
 # QOS 强制申请加速器时必须写 --gres
 GRES_LINE=""
-if [ -n "${GRES_TYPE:-}" ]; then
+if [ "$CPU_ONLY" != yes ] && [ -n "${GRES_TYPE:-}" ] && [ "$ACCEL" -gt 0 ]; then
     GRES_LINE="#SBATCH --gres=${GRES_TYPE}:${ACCEL}"
     [ -n "${MIN_GRES:-}" ] && GRES_LINE="$GRES_LINE          # 必须：QOS 要求最少 ${MIN_GRES}"
+fi
+if [ "$CPU_ONLY" != yes ] && [ -n "${MIN_GRES:-}" ] && [ "$ACCEL" -eq 0 ]; then
+    die "默认/指定分区要求至少 ${MIN_GRES}；请申请加速器或使用 --cpu-only"
 fi
 
 # 远端用户名。#SBATCH 是注释行，Slurm 不做变量展开 —— 日志路径里写 $USER
 # 会被当成字面量目录名，作业以 exit 53 失败且不产生日志。所以这里必须展开成
 # 真实用户名。默认取本地用户名，不同时用 --user 覆盖。
 REMOTE_USER="${REMOTE_USER:-${REMOTE_USER_DETECTED:-$(whoami)}}"
+[[ "$REMOTE_USER" =~ ^[A-Za-z0-9._-]+$ ]] || die "探测到的远端用户名包含不安全字符，请用 --user 显式指定"
 HOME_DIR="${HOME_BASE}/${REMOTE_USER}"
 
 # 脚本体（非 #SBATCH 行）里可以正常用 $USER
@@ -105,7 +141,7 @@ cat > "$OUT" <<EOF
 # shell 里定义，用普通 "#!/bin/bash" 会让 module load 静默失败 —— 作业照样
 # 返回 0，但 ROCM_PATH 不设置、rocminfo/rocm-smi 无输出。实测于昆山集群。
 #SBATCH --job-name=${NAME}
-#SBATCH --partition=${PARTITION}
+#SBATCH --partition=${EFFECTIVE_PARTITION}
 ${GRES_LINE}
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -153,7 +189,7 @@ sed -i.bak '/^$/N;/^\n$/D' "$OUT" 2>/dev/null && rm -f "$OUT.bak"
 
 echo "已生成 $OUT"
 echo "  集群=${CLUSTER_ID}  ${GRES_TYPE:-加速器}=${ACCEL}  CPU=${CPUS}  内存=${MEM_NOTE}  时长=${TIME}"
-echo "  分区=${PARTITION:-未设置}  节点数=${NODE_COUNT:-未探测}（来源：${NODE_COUNT_SOURCE:-profile/cache}）"
+echo "  分区=${EFFECTIVE_PARTITION}  模式=$([ "$CPU_ONLY" = yes ] && echo CPU || echo accelerator)  节点数=${NODE_COUNT:-未探测}（来源：${NODE_COUNT_SOURCE:-profile/cache}）"
 echo "  日志目录=${HOME_DIR}/scripts/logs（用户名 ${REMOTE_USER}，不对请加 --user）"
 echo
 echo "上传并提交："

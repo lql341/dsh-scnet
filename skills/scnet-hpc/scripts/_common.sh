@@ -98,9 +98,17 @@ parse_cluster_arg() {
     REST=()
     while [ $# -gt 0 ]; do
         case "$1" in
-            --cluster) CLUSTER="${2:-}"; shift 2 ;;
+            --cluster)
+                [ $# -ge 2 ] || die "--cluster 缺少参数"
+                CLUSTER="$2"
+                shift 2
+                ;;
             --cluster=*) CLUSTER="${1#*=}"; shift ;;
             *) REST+=("$1"); shift ;;
         esac
     done
+    if [ -n "$CLUSTER" ]; then
+        [[ "$CLUSTER" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
+            || die "集群短名包含不安全字符"
+    fi
 }

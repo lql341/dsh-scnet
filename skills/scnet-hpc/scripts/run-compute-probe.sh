@@ -19,20 +19,31 @@ PYTHON_BIN=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --cpus) CPUS="${2:-$CPUS}"; shift 2 ;;
+        --cpus) [ $# -ge 2 ] || die "--cpus 缺少参数"; CPUS="$2"; shift 2 ;;
         --cpus=*) CPUS="${1#*=}"; shift ;;
-        --time) TIME="${2:-$TIME}"; shift 2 ;;
+        --time) [ $# -ge 2 ] || die "--time 缺少参数"; TIME="$2"; shift 2 ;;
         --time=*) TIME="${1#*=}"; shift ;;
-        --accelerators) ACCEL="${2:-$ACCEL}"; shift 2 ;;
+        --accelerators) [ $# -ge 2 ] || die "--accelerators 缺少参数"; ACCEL="$2"; shift 2 ;;
         --accelerators=*) ACCEL="${1#*=}"; shift ;;
-        --user) REMOTE_USER="${2:-}"; shift 2 ;;
+        --user) [ $# -ge 2 ] || die "--user 缺少参数"; REMOTE_USER="$2"; shift 2 ;;
         --user=*) REMOTE_USER="${1#*=}"; shift ;;
-        --python) PYTHON_BIN="${2:-}"; shift 2 ;;
+        --python) [ $# -ge 2 ] || die "--python 缺少参数"; PYTHON_BIN="$2"; shift 2 ;;
         --python=*) PYTHON_BIN="${1#*=}"; shift ;;
         -h|--help) sed -n '2,10p' "$0" | sed 's/^# \?//'; exit 0 ;;
         *) die "未知参数: $1" ;;
     esac
 done
+
+[[ "$CPUS" =~ ^[1-9][0-9]*$ ]] || die "CPU 数必须是正整数"
+[[ "$ACCEL" =~ ^[1-9][0-9]*$ ]] || die "加速器数必须是正整数"
+[[ "$TIME" =~ ^([0-9]+-)?[0-9]{1,2}:[0-9]{2}:[0-9]{2}$ ]] \
+    || die "时长格式应为 HH:MM:SS 或 D-HH:MM:SS"
+if [ -n "$REMOTE_USER" ]; then
+    [[ "$REMOTE_USER" =~ ^[A-Za-z0-9._-]+$ ]] || die "远端用户名包含不安全字符"
+fi
+if [ -n "$PYTHON_BIN" ]; then
+    [[ "$PYTHON_BIN" =~ ^[A-Za-z0-9_./-]+$ ]] || die "Python 命令包含不安全字符"
+fi
 
 [ -n "${CLUSTER:-}" ] || die "请用 --cluster <集群短名> 指定集群。"
 load_cluster "$CLUSTER"
@@ -41,6 +52,7 @@ load_cluster "$CLUSTER"
 [ -n "${PARTITION:-}" ] || die "${CLUSTER_ID} 的 PARTITION 为空，无法提交计算节点探针。"
 
 REMOTE_USER="${REMOTE_USER:-${REMOTE_USER_DETECTED:-$(whoami)}}"
+[[ "$REMOTE_USER" =~ ^[A-Za-z0-9._-]+$ ]] || die "探测到的远端用户名包含不安全字符，请用 --user 显式指定"
 HOME_DIR="${HOME_BASE}/${REMOTE_USER}"
 PROBE_DIR="${HOME_DIR}/.scnet-hpc/probes"
 PROBE_BASE="${PROBE_DIR}/compute-probe"

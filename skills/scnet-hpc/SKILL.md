@@ -1,11 +1,12 @@
 ---
 name: scnet-hpc
-description: 在超算互联网（scnet.cn）及同类国产超算集群上工作 —— 从个人电脑（macOS/Linux）配置 SSH 连接、提交和监控 Slurm 作业、交互式调试、排查作业失败、安装 Python 依赖，以及查找海光 DCU/DTK 的官方开发文档、数学库、通信库、分析调试和 CUDA 迁移工具。当任务涉及超算集群、Slurm 作业、海光 DCU / DTK / gfx9xx、DTK 工具库选型、或需要写 sbatch 脚本、判断该在登录节点还是计算节点执行某件事时使用。集群参数存在 clusters/*.conf，支持多集群。
+description: 在超算互联网（SCNet）集群上配置 SSH、使用 Slurm、申请 CPU/DCU 资源、提交和排查作业、安装依赖及验证国产加速器兼容性；当前深度验证以海光 DCU/DTK/gfx9xx 为主。Use for SCNet HPC tasks involving SSH setup, Slurm jobs, login versus compute nodes, CPU/DCU resource requests, Hygon DCU, DTK, gfx9xx, sbatch/srun, offline compute nodes, cluster profiles, or accelerator compatibility. Other SCNet accelerators must be verified on their target cluster.
 ---
 
 # 国产超算集群使用规范
 
-面向超算互联网（scnet.cn）系列集群。**集群参数不写在文档里，存在
+面向超算互联网（SCNet）系列集群，当前收录节点以海光 DCU 为主。其他芯片平台
+只复用连接、调度和验证方法，不套用海光工具链结论。**集群参数不写在文档里，存在
 `clusters/<集群短名>.conf`**，脚本从 profile 读取，所以同一套流程能用于多个集群。
 
 ## 先确认在跟哪个集群打交道
@@ -33,6 +34,10 @@ cat clusters/<集群短名>.conf     # 看具体参数
 | `references/adding-cluster.md` | 新增集群的完整步骤 |
 | `references/hygon-dcu-development.md` | 海光 DCU 开发流程、DTK 工具库与官方资源索引 |
 | `references/software-compatibility.md` | 国产超算上的软件兼容性排查、验证分层与公开报告脱敏 |
+| `references/quickstart-en.md` | English quick start for SSH, Slurm, CPU/DCU jobs, and troubleshooting |
+
+用户使用英文提问或需要英文操作说明时，读取 `references/quickstart-en.md`；集群具体
+参数仍以 `clusters/*.conf` 为准，不从英文示例猜测。
 
 ## 换机器
 
@@ -123,7 +128,8 @@ ImportError: libmsgpackc.so.2: cannot open shared object file
 **不要在登录节点试 torch 代码然后困惑为什么报错。** 哪怕只想看一眼 tensor 的
 dtype，也要走 `srun` 或 `sbatch`。
 
-登录节点能做：`pip install`、`git`、读写文件、`sacct`/`squeue`、下载模型。
+登录节点通常用于 `git`、文件管理、`sacct`/`squeue` 和准备依赖；能否访问软件源、
+下载模型或执行 `pip install` 必须查看 profile 的网络字段并现场确认。
 
 ### 4. 计算节点通常无外网 —— 依赖必须预装
 
@@ -159,7 +165,11 @@ export TRANSFORMERS_OFFLINE=1
 ./scripts/new-job.sh <作业名> [加速器数] [cpu数] [时长]
 ./scripts/new-job.sh probe                 # 1 卡, 8 核, 20 分钟
 ./scripts/new-job.sh infer 8 32 01:30:00   # 8 卡, 32 核, 1.5 小时
+./scripts/new-job.sh --cpu-only build 0 32 01:00:00
 ```
+
+有独立 CPU 分区时使用 `--cpu-only`，脚本读取 `PARTITION_CPU` 并省略 `--gres`；
+临时指定其他分区时使用 `--partition <名称>`。
 
 上传后先验证配额而不真排队：
 
@@ -186,7 +196,7 @@ $ sacct -j <JOB_ID>
 
 ## 交互式调试（推荐）
 
-比 sbatch 快得多，适合试代码、查环境、验证假设。实测约 5 秒拿到节点：
+通常比反复提交完整作业更适合试代码、查环境和验证假设；实际排队时间取决于分区负载：
 
 ```bash
 srun -p <分区> --gres=<类型>:1 --cpus-per-task=8 --mem=30gb --time=00:10:00 \
@@ -223,25 +233,11 @@ sinfo -p <分区> -o "%n %c %m %G %t"   # 节点资源和状态
 先读 `references/hygon-dcu-development.md`。用它定位官方资料，再以目标集群的
 module、计算节点探针和 profile 为准；不要把网页当前版本直接覆盖到集群环境。
 
-**不要假设加速器支持什么。** 国产加速器（海光 DCU、寒武纪、昇腾）的软件栈往往
-落后于上游，很多 CUDA/ROCm 上想当然的能力并不存在。profile 的
-`KNOWN_LIMITATIONS` 记录了已探明的缺口。
-
-以 zzeshell 的海光 gfx936 为例，实测结论：
-
-| 能力 | 结果 |
-|---|---|
-| FP8 存储 + `.to(bfloat16)` 转换 | ✅ |
-| `torch._scaled_mm`（硬件 FP8 matmul） | ❌ 需 SM89+/SM90+ 或 ROCm MI300+ |
-| **Triton** | ❌ `libamdhip64.so` 缺 `hipDrvLaunchKernelEx` |
-| bitsandbytes 4-bit / 8-bit | ✅ 需补丁 / ❌ 无 INT8 algo |
-
-Triton 那条影响最大：**任何依赖 Triton kernel 的推理框架都跑不起来**
-——SGLang FP8 路径、vLLM ROCm MoE 后端、transformers `finegrained-fp8` 都在此列。
-遇到这类需求先想清楚有没有纯 PyTorch 的退路，别花时间在框架适配上。
-
-碰到新集群时，用一个探针作业实测这些能力，把结论写回 profile 的
-`KNOWN_LIMITATIONS`，别让下一个人重踩。
+**不要假设加速器支持什么。** 即使同属 SCNet，不同芯片、DTK/驱动和框架版本的
+能力也可能不同。先读取目标 profile 的 `KNOWN_LIMITATIONS`，再用计算节点探针验证
+设备枚举、dtype、kernel、通信和真实功能。海光 DCU/DTK 的开发资料入口见
+`references/hygon-dcu-development.md`；软件兼容性验证顺序见
+`references/software-compatibility.md`。
 
 ## 排查失败
 
@@ -266,6 +262,8 @@ Triton 那条影响最大：**任何依赖 Triton kernel 的推理框架都跑�
 
 将集群实测结果写入公开报告或仓库前，保留环境、方法、版本、结果和限制，移除或替换以下信息：用户名、SSH 主机/端口、内部域名、IP、节点名、作业编号、绝对家目录和私有镜像地址。可用 `<USER_HOME>`、`<DTK_ROOT>`、`<CLUSTER_HOST>`、`已脱敏作业` 等占位符。
 
-报告正文沿用已有 LAMMPS 报告的结构和风格：深色渐变卡片、青绿色主色、蓝色辅助色，以及“环境信息 → 编译过程与主要难题 → 最终方案 → 测试结果 → 已知限制 → 经验总结 → 附录”的叙述顺序。公开结论必须标明测试环境、验证范围和未验证边界。
+公开技术记录按“环境与版本 → 问题与证据 → 解决方法 → 验证结果 → 已知限制 →
+可复用经验”组织。结论必须标明测试环境、验证范围和未验证边界；视觉样式由具体发布
+项目决定，不写进本 skill。
 
 详细的兼容性排查和报告模板见 `references/software-compatibility.md`。
