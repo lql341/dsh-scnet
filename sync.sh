@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # 从 canonical scnet-hpc 仓库同步 skill 内容到本仓库的 skills/scnet-hpc/。
 #
-# 默认源：../skills/scnet-hpc（本地同目录）；也可用 --src <路径> 指定。
+# 默认源：../../skills/scnet-hpc（当前 agent 目录布局）；也可用 --src <路径> 指定。
 # 只同步 SKILL.md、clusters/、references/ 和 scripts/（排除 install.sh 和
 # clusters/.cache 动态缓存，缓存属于本机运行结果，不应打进发布包）。
 # SKILL.md 会做 DSH 适配：去掉 Claude Code 专用的 install.sh 安装说明。
 
 set -euo pipefail
 
-SRC="${DSCNET_SRC:-../skills/scnet-hpc}"
+SRC="${DSCNET_SRC:-../../skills/scnet-hpc}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --src) SRC="${2:-}"; shift 2 ;;

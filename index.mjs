@@ -12,12 +12,12 @@ const SKILL_DIR = join(__dirname, 'skills', 'scnet-hpc')
 const SCRIPTS_DIR = join(SKILL_DIR, 'scripts')
 const CLUSTERS_DIR = join(SKILL_DIR, 'clusters')
 
-function runBash(script, args, timeoutMs = 120000) {
+function runBash(script, args, timeoutMs = 120000, cwd = SKILL_DIR) {
   return new Promise((resolve) => {
     execFile(
       'bash',
       [script, ...args],
-      { cwd: SKILL_DIR, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
+      { cwd, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
       (error, stdout, stderr) => {
         const code = error ? (typeof error.code === 'number' ? error.code : 1) : 0
         resolve({
@@ -126,7 +126,7 @@ export function apply(ctx) {
     defineTool({
       name: 'scnet_generate_job',
       description:
-        '按目标集群的约束生成合规的 Slurm 作业脚本（自动算 --mem、--gres、module load、离线环境变量，并在末尾写 exit $rc）。会写一个 <name>.slurm 到当前目录并返回上传/提交命令。',
+        '按目标集群约束生成 Slurm 作业脚本。支持加速器作业、cpu_only CPU 分区和显式 partition 覆盖；自动计算内存、按需申请 GRES、加载 module、设置离线环境并传播退出码。',
       parameters: {
         name: { type: 'string', required: true, description: '作业名（slurm --job-name 和输出文件名）' },
         accelerators: { type: 'string', description: '加速器数量，默认 1' },
@@ -134,6 +134,8 @@ export function apply(ctx) {
         time: { type: 'string', description: '时长，默认 00:20:00，格式 HH:MM:SS 或 D-HH:MM:SS' },
         cluster: { type: 'string', description: '集群短名；省略时若只有一个 profile 则自动选择' },
         remote_user: { type: 'string', description: '远端用户名；与本地不同时填写（日志路径需要真实用户名）' },
+        cpu_only: { type: 'boolean', description: '使用 profile 的 PARTITION_CPU 且不申请 GRES（默认否）' },
+        partition: { type: 'string', description: '显式覆盖目标 Slurm 分区；需自行确认该分区的 GRES 规则' },
         refresh: { type: 'boolean', description: '是否在生成前运行 refresh-cluster.sh 刷新动态规则（默认否）' },
         no_auto: { type: 'boolean', description: '是否忽略 clusters/.cache/*.auto.conf 动态缓存（默认否）' },
       },
@@ -155,15 +157,21 @@ export function apply(ctx) {
         if (cluster) argv.push('--cluster', cluster)
         const remoteUser = String(args.remote_user || '').trim()
         if (remoteUser) argv.push('--user', remoteUser)
+        if (args.cpu_only === true) argv.push('--cpu-only')
+        const partition = String(args.partition || '').trim()
+        if (partition) argv.push('--partition', partition)
         if (args.refresh === true) argv.push('--refresh')
         if (args.no_auto === true) argv.push('--no-auto')
         argv.push(nameVal)
-        if (accelerators) argv.push(accelerators.value)
-        if (cpus) argv.push(cpus.value)
-        if (args.time && String(args.time).trim()) argv.push(String(args.time).trim())
+        const time = String(args.time || '').trim()
+        if (accelerators || cpus || time) {
+          argv.push(accelerators?.value || (args.cpu_only === true ? '0' : '1'))
+        }
+        if (cpus || time) argv.push(cpus?.value || '8')
+        if (time) argv.push(time)
 
         const timeoutMs = args.refresh === true ? 240000 : 30000
-        const res = await runBash(join(SCRIPTS_DIR, 'new-job.sh'), argv, timeoutMs)
+        const res = await runBash(join(SCRIPTS_DIR, 'new-job.sh'), argv, timeoutMs, process.cwd())
         if (res.ok) return res.stdout.trim() || res.stderr.trim()
         return `生成失败（exit ${res.code}）：\n${res.stderr.trim() || res.stdout.trim()}`
       },

@@ -50,9 +50,10 @@ DEEPSEEK_API_KEY: sk-你的key
 
 | 顺序 | 测试话术 | 预期 | 风险 |
 |---|---|---|---|
-| 1 | 用 scnet_list_clusters 看看有哪些集群 | 返回 `kseshell`、`zzeshell` | 只读 |
+| 1 | 用 scnet_list_clusters 看看有哪些集群 | 返回 `kseshell`、`wuzhshell`、`xianshell`、`zzeshell` | 只读 |
 | 2 | 用 scnet_show_cluster 读一下 zzeshell | 返回该集群 profile | 只读 |
-| 3 | 用 scnet_generate_job 生成一个 probe 作业 | 生成 `.slurm` 并给出上传命令 | 只写当前目录 |
+| 3 | 用 scnet_generate_job 生成一个 probe 作业 | 生成带 GRES 的 `.slurm` 并给出上传命令 | 只写当前目录 |
+| 3a | 用 scnet_generate_job 在 kseshell 生成 cpu_only 构建作业 | 使用 `kshcnormal` 且不含 `--gres` | 只写当前目录 |
 | 4 | 用 scnet_setup_ssh 配置连接 | 需要真实私钥，会改 `~/.ssh` | 中 |
 | 5 | 用 scnet_probe_cluster 探测集群 | 需要真实集群，会 SSH 到远端 | 中 |
 | 6 | 用 scnet_refresh_cluster dry_run=true 刷新规则 | 输出即将写入的缓存，不落盘 | 中（会 SSH） |

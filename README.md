@@ -1,6 +1,6 @@
 <h1 align="center">dsh-scnet</h1>
 
-<p align="center">在 DeepSeek Harness 里操作超算互联网（scnet.cn）及同类国产超算集群：配 SSH、生成 Slurm 作业、探测/刷新集群、运行计算节点探针、排查失败，附海光 DCU/DTK 知识。</p>
+<p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）集群：配 SSH、生成 CPU/DCU Slurm 作业、探测/刷新集群、运行计算节点探针、排查失败，附海光 DCU/DTK 知识和英文快速指南。</p>
 
 ## 这是什么
 
@@ -31,6 +31,7 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 | zzeshell | 超算互联网 · 郑州 | 海光 BW1000 DCU (gfx936) ×8, 64GB/卡 |
 | kseshell | 超算互联网 · 昆山 | 海光 Z100 DCU (gfx906) ×4, 16GB/卡 |
 | wuzhshell | 超算互联网 · 乌镇 | 海光 Z100 DCU (gfx906) ×4, 16GB/卡 |
+| xianshell | 超算互联网 · 西安 | 海光 Z100 DCU (gfx906) ×4, 16GB/卡 |
 
 ### Tools
 
@@ -38,7 +39,7 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 |---|---|
 | scnet_list_clusters | 列出已配置的集群 profile |
 | scnet_show_cluster | 读取指定集群的完整参数 |
-| scnet_generate_job | 按 profile 生成合规 Slurm 作业脚本 |
+| scnet_generate_job | 按 profile 生成加速器或 CPU-only Slurm 作业，支持显式分区覆盖 |
 | scnet_setup_ssh | 配置本地到集群的 SSH 连接 |
 | scnet_probe_cluster | 探测新集群并生成 profile |
 | scnet_refresh_cluster | 动态刷新已有集群的规则缓存 |
@@ -60,7 +61,8 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 │   ├── clusters/
 │   │   ├── zzeshell.conf
 │   │   ├── kseshell.conf
-│   │   └── wuzhshell.conf
+│   │   ├── wuzhshell.conf
+│   │   └── xianshell.conf
 │   ├── scripts/
 │   └── references/
 ├── sync.sh               # 从 canonical 仓库同步
@@ -76,7 +78,7 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 本仓库是发布面，知识内容（`skills/scnet-hpc/` 下的 SKILL.md、clusters、references、scripts）从 canonical 仓库 `lql341/scnet-hpc` 同步：
 
 ```sh
-./sync.sh                   # 默认 ../skills/scnet-hpc
+./sync.sh                   # 当前本机布局默认 ../../skills/scnet-hpc
 ./sync.sh --src /path/to/scnet-hpc
 ```
 
@@ -88,7 +90,7 @@ git 源、本地目录安装以及验证步骤见 [INSTALL.md](./INSTALL.md)。
 - 仓库不含私钥、token、用户名、密钥指纹。
 - `scnet_setup_ssh` 会写入 `~/.ssh/`，调用前确认私钥路径和集群。
 - `scnet_generate_job` 生成的 `.slurm` 可能含本机用户名，`.gitignore` 已排除。
-- 集群主机名/端口是平台公开信息，由 canonical 仓库维护。
+- SSH 接入端点仅使用平台面向用户公开提供的信息，由 canonical 仓库维护。
 - `scnet_refresh_cluster` / `scnet_run_compute_probe` 会 SSH 到远端并可能提交作业；运行前确认集群和副作用。
 - `clusters/.cache/` 是本机动态探测缓存，`.gitignore` 已排除，不应提交。
 
