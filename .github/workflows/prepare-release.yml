@@ -1,0 +1,91 @@
+name: Prepare DSH-SCNet release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Version increment"
+        required: true
+        type: choice
+        default: "patch"
+        options: [patch, minor, major]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: prepare-dsh-scnet-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout DSH-SCNet
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.DSH_SCNET_PAT }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Verify release branch
+        run: |
+          test "${GITHUB_REF_NAME}" = "main"
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Install dependencies
+        run: npm install --no-package-lock --ignore-scripts
+
+      - name: Validate current package
+        run: npm run validate
+
+      - name: Create release branch
+        env:
+          RELEASE_TYPE: ${{ github.event.inputs.release_type }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm version "$RELEASE_TYPE" --no-git-tag-version
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          RELEASE_BRANCH="release/v${PACKAGE_VERSION}"
+          if git rev-parse -q --verify "refs/tags/v${PACKAGE_VERSION}" >/dev/null; then
+            echo "v${PACKAGE_VERSION} already exists" >&2
+            exit 1
+          fi
+          if npm view "dsh-scnet@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
+            echo "dsh-scnet@${PACKAGE_VERSION} already exists on npm" >&2
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=${PACKAGE_VERSION}" >> "$GITHUB_ENV"
+          echo "RELEASE_BRANCH=${RELEASE_BRANCH}" >> "$GITHUB_ENV"
+          git switch -c "$RELEASE_BRANCH"
+          git add package.json
+          git commit -m "chore: release v${PACKAGE_VERSION}"
+          git push origin "$RELEASE_BRANCH"
+
+      - name: Open release pull request
+        env:
+          GH_TOKEN: ${{ secrets.DSH_SCNET_PAT }}
+        run: |
+          PR_URL="$(gh pr create \
+            --base main \
+            --head "$RELEASE_BRANCH" \
+            --title "chore: release v${PACKAGE_VERSION}" \
+            --body "Release DSH-SCNet v${PACKAGE_VERSION}. Merge only after the required validate check passes.")"
+          echo "PR_URL=${PR_URL}" >> "$GITHUB_ENV"
+
+      - name: Wait for required validation
+        env:
+          GH_TOKEN: ${{ secrets.DSH_SCNET_PAT }}
+        run: gh pr checks "$PR_URL" --required --watch --interval 10
+
+      - name: Merge validated release pull request
+        env:
+          GH_TOKEN: ${{ secrets.DSH_SCNET_PAT }}
+        run: gh pr merge "$PR_URL" --merge --delete-branch

@@ -3,12 +3,10 @@ name: Publish DSH-SCNet
 on:
   workflow_dispatch:
     inputs:
-      release_type:
-        description: "Version increment"
+      version:
+        description: "Merged package version, for example 0.4.2"
         required: true
-        type: choice
-        default: "patch"
-        options: [patch, minor, major]
+        type: string
 
 permissions:
   contents: write
@@ -32,11 +30,19 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org/
 
-      - name: Verify release branch
+      - name: Verify release branch and version
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
         run: |
           test "${GITHUB_REF_NAME}" = "main"
-          git fetch origin main
+          git fetch origin main --tags
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          test "$PACKAGE_VERSION" = "$RELEASE_VERSION"
+          if git rev-parse -q --verify "refs/tags/v${RELEASE_VERSION}" >/dev/null; then
+            echo "v${RELEASE_VERSION} already exists" >&2
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm install --no-package-lock --ignore-scripts
@@ -44,31 +50,33 @@ jobs:
       - name: Validate package
         run: npm run validate
 
-      - name: Prepare release version
+      - name: Pack release artifact
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
         run: |
-          npm version "${{ github.event.inputs.release_type }}" --no-git-tag-version
-          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
-          NEW_VERSION="v${PACKAGE_VERSION}"
-          RELEASE_TARBALL=".release/dsh-scnet-${PACKAGE_VERSION}.tgz"
-          echo "NEW_VERSION=${NEW_VERSION}" >> "$GITHUB_ENV"
-          echo "RELEASE_TARBALL=${RELEASE_TARBALL}" >> "$GITHUB_ENV"
           mkdir -p .release
           npm pack --pack-destination .release/
-          if npm view "dsh-scnet@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
-            echo "dsh-scnet@${PACKAGE_VERSION} already exists on npm" >&2
-            exit 1
+          RELEASE_TARBALL=".release/dsh-scnet-${RELEASE_VERSION}.tgz"
+          test -f "$RELEASE_TARBALL"
+          echo "RELEASE_TARBALL=$RELEASE_TARBALL" >> "$GITHUB_ENV"
+          LOCAL_INTEGRITY="$(npm pack --json --dry-run | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s)[0].integrity))')"
+          PUBLISHED_INTEGRITY="$(npm view "dsh-scnet@${RELEASE_VERSION}" dist.integrity 2>/dev/null || true)"
+          if [ -n "$PUBLISHED_INTEGRITY" ]; then
+            test "$LOCAL_INTEGRITY" = "$PUBLISHED_INTEGRITY"
+            echo "SHOULD_PUBLISH=false" >> "$GITHUB_ENV"
+          else
+            echo "SHOULD_PUBLISH=true" >> "$GITHUB_ENV"
           fi
 
       - name: Publish to npm
+        if: env.SHOULD_PUBLISH == 'true'
         run: npm publish "$RELEASE_TARBALL" --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Commit and tag published release
+      - name: Tag published release
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git commit -m "chore: release ${NEW_VERSION}"
-          git tag "${NEW_VERSION}"
-          git push --atomic origin HEAD:main "${NEW_VERSION}"
+          git tag "v${RELEASE_VERSION}"
+          git push origin "v${RELEASE_VERSION}"
