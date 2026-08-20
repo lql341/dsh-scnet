@@ -1,12 +1,17 @@
 name: Publish DSH-SCNet
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Version increment"
+        required: true
+        type: choice
+        default: "patch"
+        options: [patch, minor, major]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: publish-dsh-scnet
@@ -18,6 +23,8 @@ jobs:
     steps:
       - name: Checkout DSH-SCNet
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -25,10 +32,11 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org/
 
-      - name: Verify release tag
+      - name: Verify release branch
         run: |
-          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
-          test "${GITHUB_REF_NAME}" = "v${PACKAGE_VERSION}"
+          test "${GITHUB_REF_NAME}" = "main"
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 
       - name: Install dependencies
         run: npm install --no-package-lock --ignore-scripts
@@ -36,13 +44,31 @@ jobs:
       - name: Validate package
         run: npm run validate
 
-      - name: Pack release artifact
+      - name: Prepare release version
         run: |
+          npm version "${{ github.event.inputs.release_type }}" --no-git-tag-version
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          NEW_VERSION="v${PACKAGE_VERSION}"
+          RELEASE_TARBALL=".release/dsh-scnet-${PACKAGE_VERSION}.tgz"
+          echo "NEW_VERSION=${NEW_VERSION}" >> "$GITHUB_ENV"
+          echo "RELEASE_TARBALL=${RELEASE_TARBALL}" >> "$GITHUB_ENV"
           mkdir -p .release
           npm pack --pack-destination .release/
-          echo "RELEASE_TARBALL=.release/dsh-scnet-$(node -p 'require("./package.json").version').tgz" >> "$GITHUB_ENV"
+          if npm view "dsh-scnet@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
+            echo "dsh-scnet@${PACKAGE_VERSION} already exists on npm" >&2
+            exit 1
+          fi
 
       - name: Publish to npm
         run: npm publish "$RELEASE_TARBALL" --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Commit and tag published release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: release ${NEW_VERSION}"
+          git tag "${NEW_VERSION}"
+          git push --atomic origin HEAD:main "${NEW_VERSION}"
