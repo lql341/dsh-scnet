@@ -1,11 +1,11 @@
 # 新增一个集群
 
 这套 skill 的集群参数都在 `clusters/*.conf`，脚本从 profile 读取。新增集群
-不需要改任何脚本或文档，只加一个 profile。
+通常只需增加一个 profile；若调度器或字段语义不同，仍需扩展脚本。
 
-## 步骤
+## 配置流程
 
-### 1. 先手工确认能连上
+### 1. 验证基础连接
 
 用平台控制台下载的私钥，临时连一次：
 
@@ -14,9 +14,9 @@ chmod 600 <私钥>
 ssh -i <私钥> -p <端口> <用户名>@<主机名> 'hostname; whoami'
 ```
 
-连不上先解决：私钥是否过期、本机 IP 是否在平台白名单、端口是否可达。
+连接失败时检查：私钥是否过期、本机 IP 是否在平台白名单、端口是否可达。
 
-### 2. 临时加一个 ssh 别名（探测脚本需要）
+### 2. 添加临时 SSH 别名
 
 ```bash
 cat >> ~/.ssh/config <<'EOF'
@@ -30,7 +30,7 @@ Host newcluster-tmp
 EOF
 ```
 
-### 3. 探测，自动生成 profile
+### 3. 生成初始 profile
 
 ```bash
 ./scripts/probe-cluster.sh newcluster-tmp <集群短名> > clusters/<集群短名>.conf
@@ -39,7 +39,7 @@ EOF
 脚本会自动填：SSH 参数、调度器类型、分区、`DEF_MEM_PER_CPU`、QOS 的 `MIN_GRES`、
 节点规格、网络可达性、登录节点缺失的库、家目录容量。
 
-**探测不到的项会留空并在文件末尾列出**，不会瞎猜。
+**探测不到的项会留空并在文件末尾列出**，不填入推测值。
 
 ### 4. 补齐手工项
 
@@ -57,12 +57,12 @@ srun -p <分区> --gres=<类型>:1 --time=00:05:00 bash -lc 'module load <模块
 srun -p <分区> --gres=gpu:1 --time=00:05:00 nvidia-smi --query-gpu=name --format=csv
 ```
 
-**module 名** —— `ssh <集群> 'module avail 2>&1'` 里挑编译器和加速器 SDK。
+**module 名** —— `ssh <集群> 'module avail 2>&1'` 中选择与目标环境匹配的编译器和加速器 SDK。
 
 **`NEEDS_UPDATE_HOSTKEYS_NO`** —— 如果连接时看到
 `client_global_hostkeys_prove_confirm: server gave bad signature`，设成 `yes`。
 
-**`KEY_NAME_MARKER`** —— 看私钥文件名格式。若形如
+**`KEY_NAME_MARKER`** —— 根据私钥文件名格式设置。若形如
 `zhangsan_xxx.scnet.cn_RsaKeyExpireTime_2027-01-01.txt`，则设
 `KEY_NAME_MARKER="_<集群主机>_"`，脚本就能自动提取用户名。
 
@@ -77,10 +77,9 @@ srun -p <分区> --gres=gpu:1 --time=00:05:00 nvidia-smi --query-gpu=name --form
 公开 profile 使用占位符时，`<用户名>` 必须显式传入；如果已在本地私有 profile
 里填了真实 `KEY_NAME_MARKER`，可以省略。
 
-### 6. 实测加速器能力，写回 profile
+### 6. 验证加速器能力并记录结论
 
-**这一步别省。** 国产加速器的软件栈往往落后于上游，很多想当然的能力并不存在。
-花 5 分钟测清楚，能省掉后面几天的困惑。
+加速器能力必须以目标计算节点的探针结果为准，不能从上游 ROCm、CUDA 或其他集群的结果推断。
 
 所有探针和测试任务的临时文件必须放在共享家目录中，例如
 `$HOME/.scnet-hpc/tmp/$SLURM_JOB_ID`。不要使用 `/tmp` 或从根目录创建临时目录；作业
@@ -127,15 +126,13 @@ except Exception as e:
 
 把结论写进 profile 的 `KNOWN_LIMITATIONS`，格式参考已有的 profile。
 
-Triton 尤其值得测：**它不可用会连带否掉一大批推理框架**（SGLang 的 FP8 路径、
-vLLM 的 ROCm MoE 后端、transformers 的 finegrained-fp8）。提前知道能避免在框架
-适配上白费时间。
+Triton 是多种推理框架的运行前提；不可用时，对应的 Triton 执行路径也不可用（SGLang 的 FP8 路径、vLLM 的 ROCm MoE 后端、transformers 的 finegrained-fp8）。该结论应在框架适配前确认。
 
 已有集群后续不必重跑完整流程，可用
 `./scripts/refresh-cluster.sh --cluster <集群短名> --compute` 动态刷新调度器、
 内存、分区、网络和计算节点能力，结果写到 `clusters/.cache/<集群短名>.auto.conf`。
 
-## profile 字段速查
+## profile 字段参考
 
 必填三项：`CLUSTER_ID`、`SSH_HOST`、`SSH_PORT`。其余留空则脚本跳过、文档显示为未探测。
 

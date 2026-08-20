@@ -137,9 +137,9 @@ cat > "$OUT" <<EOF
 #!/bin/bash -l
 # 目标集群: ${CLUSTER_ID} (${CLUSTER_DESC:-$SSH_HOST})
 #
-# 注意 shebang 是 "bash -l"（login shell）。有些集群的 module 函数只在 login
-# shell 里定义，用普通 "#!/bin/bash" 会让 module load 静默失败 —— 作业照样
-# 返回 0，但 ROCM_PATH 不设置、rocminfo/rocm-smi 无输出。实测于昆山集群。
+# 使用 "bash -l"，因为部分集群仅在 login
+# shell 中定义 module 函数。普通 "#!/bin/bash" 可能使 module load 静默失败，作业仍
+# 返回 0，但 ROCM_PATH 未设置且能力工具无输出。该行为已在昆山集群观测。
 #SBATCH --job-name=${NAME}
 #SBATCH --partition=${EFFECTIVE_PARTITION}
 ${GRES_LINE}
@@ -178,7 +178,7 @@ PYEOF
 rc=\$?
 echo "### python exit=\$rc"
 date +"%Y-%m-%d %H:%M:%S"
-# 必须传播退出码，否则 python 崩了 sacct 仍显示 COMPLETED（假成功）
+# 传播工作负载退出码，避免调度器状态掩盖 Python 失败
 exit \$rc
 EOF
 
@@ -196,4 +196,4 @@ echo "上传并提交："
 echo "  scp $OUT ${CLUSTER_ID}:${HOME_DIR}/scripts/"
 echo "  ssh ${CLUSTER_ID} 'mkdir -p ${HOME_DIR}/scripts/logs && sbatch --test-only ${HOME_DIR}/scripts/$OUT'"
 echo
-echo "注意：logs 目录必须先存在，否则作业会以 exit 53 失败且不产生任何日志。"
+echo "要求：logs 目录必须先存在；否则作业会以 exit 53 失败且不产生日志。"

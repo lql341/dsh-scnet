@@ -2,13 +2,13 @@
 
 具体参数在 `clusters/<集群短名>.conf`，本文讲通用方法。
 
-## 查当前集群的参数
+## 读取和核验集群参数
 
 ```bash
 cat clusters/<集群短名>.conf
 ```
 
-要现场核实（profile 可能过期）：
+任务依赖当前状态时，执行现场核验：
 
 ```bash
 ssh <集群> 'scontrol show partition <分区>'     # DefMemPerCPU / MaxTime / TotalNodes
@@ -16,7 +16,7 @@ ssh <集群> 'sinfo -p <分区> -o "%n %c %m %G %t"'  # 每节点 CPU/内存/GRE
 ssh <集群> 'sacctmgr show qos where name=<QOS名> format=Name,MinTRES%30,MaxTRES%30 -P'
 ```
 
-也可以用 skill 自带的动态刷新，登录节点只读探测不会提交作业：
+也可使用动态刷新脚本，登录节点只读探测不会提交作业：
 
 ```bash
 ./scripts/refresh-cluster.sh --cluster <集群短名> --dry-run
@@ -42,7 +42,7 @@ module load compiler/gcc/9.3.0 compiler/dtk/26.04
 DTK 是海光对 ROCm 的发行版，含 HIP、rocBLAS、hipBLASLt、MIOpen、RCCL 等，
 把 ROCm 的部分库改了名（如 `libgalaxyhip.so` 对应 `libamdhip64.so`）。
 
-看有哪些可用：
+列出可用模块：
 
 ```bash
 ssh <集群> 'module avail 2>&1'
@@ -51,14 +51,14 @@ ssh <集群> 'module avail 2>&1'
 ## Python 环境
 
 超算通常没有系统级的 torch，用 venv 或 conda env。profile 的 `DEFAULT_VENV`
-记录了常用的那个（相对家目录）。
+记录默认环境路径（相对家目录）。
 
 ```bash
 module load <MODULE_LOADS>                       # 必须先 load
 source ~/<DEFAULT_VENV>/bin/activate
 ```
 
-**顺序重要**：不 module load 就激活 venv，`import torch` 会报缺共享库：
+必须先加载工具链模块，再激活 Python 环境；否则，`import torch` 会报缺共享库：
 
 ```
 ImportError: libgalaxyhip.so.5: cannot open shared object file
@@ -72,7 +72,7 @@ module load python/3.8.10
 
 ## 厂商预编译的 wheel
 
-国产加速器的 torch 等框架需要厂商适配版，文件名带厂商标记。海光的例子：
+国产加速器的 torch 等框架需要厂商适配版，文件名带厂商标记。海光示例：
 
 ```
 torch-2.7.1+das.opt1.dtk2604-cp312-...whl
@@ -85,16 +85,16 @@ pip 想升级 torch，加 `--no-deps` 阻止。
 
 ## 装依赖
 
-只能在**登录节点**装（计算节点无外网）：
+当计算节点无外网时，在具备网络访问的登录节点准备依赖：
 
 ```bash
 source ~/<venv>/bin/activate
 pip install -i <PIP_INDEX> <包名>
 ```
 
-`PIP_INDEX` 在 profile 里。国内源比 pypi.org 快很多。
+`PIP_INDEX` 在 profile 里。镜像选择以 profile 和现场可达性为准。
 
-装完后**验证要在计算节点做**（登录节点可能 import 不了框架）：
+安装后在目标计算节点验证（登录节点可能 import 不了框架）：
 
 ```bash
 srun -p <分区> --gres=<类型>:1 --cpus-per-task=8 --mem=30gb --time=00:05:00 \
@@ -115,14 +115,14 @@ snapshot_download('<repo>', cache_dir='/public/home/$USER/models/_ms_cache')
 "
 ```
 
-**注意一个坑**：modelscope 首次下载可能漏文件（只留 `.lock`）。用
+若 ModelScope 首次下载结果不完整或只保留 `.lock` 文件，可使用
 `allow_patterns` 单独补：
 
 ```python
 snapshot_download(repo, cache_dir=..., allow_patterns=["inference/*", "*.json"])
 ```
 
-下载完检查文件数是否符合预期，别假设完整。
+下载后核验所需文件、数量和校验信息。
 
 ## 家目录布局约定
 
@@ -140,7 +140,7 @@ softwares/             代码、venv、编译产物
 
 让所有 `#SBATCH --output` 指向 `scripts/logs/`，否则日志会散落在提交目录。
 
-## 迁移目录的注意事项
+## 迁移环境目录
 
 **移动含 venv / conda env 的目录前，检查 `bin/` 下的 shebang。** conda 把解释器
 绝对路径写死在 `pip`、`torchrun` 等入口点第一行，直接移动会报 bad interpreter：
@@ -153,7 +153,7 @@ for f in *; do
 done
 ```
 
-实际案例：移一个 conda env 需要改 57 个入口点。改完验证：
+迁移后验证入口脚本和环境前缀：
 
 ```bash
 <新路径>/bin/python -c "import sys; print(sys.prefix)"
@@ -170,7 +170,7 @@ df -h ~                    # 文件系统使用情况
 du -sh */ | sort -h        # 各目录体积（大目录很慢，考虑放后台）
 ```
 
-注意 `df` 给的是**整个文件系统**的容量，不一定是你的个人配额。查个人配额要用
+`df` 显示的是**整个文件系统**的容量，不一定是你的个人配额。查个人配额要用
 平台特定的命令（如 `lfs quota`）或看控制台。
 
 模型权重是主要占用，几个大模型就是几百 GB。

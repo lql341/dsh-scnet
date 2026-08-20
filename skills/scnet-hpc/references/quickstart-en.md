@@ -4,6 +4,10 @@ This guide covers the common workflow for SCNet clusters. Current repository pro
 mainly on Hygon DCU/DTK systems. Always read the target profile before using a partition,
 memory value, accelerator type, module, or home-directory path.
 
+The repository scripts support Linux and macOS natively. On Windows, use WSL2; native Windows
+execution and Git Bash are not fully validated. This is separate from the official SCNet desktop
+client, which supports Windows 10+ and macOS 12 Monterey+.
+
 ## 1. Inspect the available profiles
 
 ```bash

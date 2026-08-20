@@ -1,0 +1,36 @@
+name: Validate DSH-SCNet
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-package-lock --ignore-scripts
+
+      - name: Validate package
+        run: npm run validate
+
+      - name: Verify synchronized skill
+        run: |
+          git clone --depth 1 https://github.com/lql341/scnet-hpc.git ../scnet-hpc-source
+          ./sync.sh --src ../scnet-hpc-source
+          git diff --exit-code -- skills/scnet-hpc
+
+      - name: Check repository hygiene
+        run: git diff --check

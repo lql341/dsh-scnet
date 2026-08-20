@@ -1,7 +1,7 @@
 {
   "name": "dsh-scnet",
   "version": "0.4.0",
-  "description": "DeepSeek Harness plugin for SCNet HPC: SSH setup, CPU/DCU Slurm jobs, cluster probing, compute-node diagnostics, and Hygon DCU/DTK guidance.",
+  "description": "Community DeepSeek Harness bundle for SCNet HPC: profile-based SSH, CPU/DCU Slurm jobs, cluster probing, compute-node diagnostics, and Hygon DCU/DTK guidance.",
   "type": "module",
   "main": "./index.mjs",
   "exports": {
@@ -10,7 +10,7 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.8"
   },
   "repository": {
     "type": "git",
@@ -19,15 +19,20 @@
   "files": [
     "index.mjs",
     "cordis.patch.yml",
-    "skills"
+    "skills",
+    "docs",
+    "README_CN.md",
+    "README.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
-    },
-    "skills": [
-      "./skills/scnet-hpc/SKILL.md"
-    ]
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "validate": "node scripts/validate-package.mjs"
   },
   "engines": {
     "node": ">=22.19"

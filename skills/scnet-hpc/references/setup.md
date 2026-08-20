@@ -3,7 +3,7 @@
 集群的主机名、端口等参数来自 `clusters/<集群短名>.conf`。
 本文用 `<集群>`、`<主机名>`、`<端口>` 表示从 profile 读出的值。
 
-## 手工配置（不用 setup-ssh.sh 时）
+## 手工配置
 
 ```bash
 # 1. 装私钥
@@ -42,14 +42,14 @@ Host <集群> <主机名>
   UpdateHostKeys no
 ```
 
-## 各选项的理由
+## SSH 选项说明
 
 **`ControlPersist 10m` 而非 `yes`**：永久驻留的 master 在笔记本休眠或换网络后会
-变成失效 socket，反而要手工清理。10 分钟覆盖一次交互操作的节奏，又能自然回收。
+变成失效 socket，可能留下需要清理的失效 socket。10 分钟覆盖一次交互操作的节奏，又能自然回收。
 实测复用后单条命令从约 2 秒降到 0.57 秒。
 
 **`ServerAliveInterval 60`**：应用层心跳，防止空闲 SSH 会话被中间网关静默切断。
-跑长任务时关键。`TCPKeepAlive` 是 TCP 层的，两者互补。
+用于保持长时间空闲会话。`TCPKeepAlive` 是 TCP 层的，两者互补。
 
 **`UpdateHostKeys no`**：部分平台的服务端对主机密钥轮换扩展返回错误签名：
 
@@ -57,9 +57,7 @@ Host <集群> <主机名>
 client_global_hostkeys_prove_confirm: server gave bad signature for RSA key 0
 ```
 
-这是平台侧实现问题，不影响安全性——首次记录的主机密钥仍在正常校验。关掉只为消除
-告警噪音。**只在遇到这个告警的集群上加**（profile 里标
-`NEEDS_UPDATE_HOSTKEYS_NO=yes`）。
+该设置仅禁用服务端主机密钥轮换扩展；首次主机密钥仍按正常流程校验。仅在出现该告警且 profile 标记 `NEEDS_UPDATE_HOSTKEYS_NO=yes` 的集群上使用。
 
 **`IdentitiesOnly yes`**：只用指定的私钥。ssh-agent 里密钥多时，避免因尝试次数
 过多被服务端拒绝。
@@ -91,7 +89,7 @@ profile 里的 `KEY_NAME_MARKER` 就是用来从这种文件名里提取用户�
 `scnet-hpc` profile 使用 `_<CLUSTER_HOST>_` 占位符，所以安装时通常需要显式传
 用户名，或在本地私有 profile 中补齐真实标记。
 
-查看当前密钥指纹：
+查看密钥指纹：
 
 ```bash
 ssh-keygen -lf ~/.ssh/id_rsa_<集群>
@@ -113,7 +111,7 @@ ssh-keygen -p -f ~/.ssh/id_rsa_<集群>
 | `Connection timed out` | 端口被本地网络阻断（超算常用非 22 端口）|
 | `Bad owner or permissions on config` | `chmod 600 ~/.ssh/config` |
 | `WARNING: UNPROTECTED PRIVATE KEY` | `chmod 600 ~/.ssh/id_rsa_<集群>` |
-| 首次连接卡住不动 | 在等确认主机指纹，加 `-o StrictHostKeyChecking=accept-new` |
+| 首次连接等待主机指纹确认 | 在等确认主机指纹，加 `-o StrictHostKeyChecking=accept-new` |
 
 多数超算平台有 **IP 白名单**，换网络（家里/公司/热点）后可能连不上，
 需要去控制台加当前 IP。
@@ -125,7 +123,7 @@ ssh -o BatchMode=yes <集群> '<命令>'
 ```
 
 `BatchMode=yes` 让认证失败立刻返回，而不是卡在密码提示上等输入。写自动化脚本时
-必加，否则可能挂住。
+应启用，以避免自动化流程等待交互输入。
 
 ## 文件传输
 
@@ -135,4 +133,4 @@ scp <集群>:/public/home/$USER/scripts/logs/job_123.log .
 rsync -avz --progress ./dir/ <集群>:/public/home/$USER/dir/   # 大量文件
 ```
 
-走同一个长连接，不需额外配置端口。
+上述命令复用 SSH profile 中的连接参数。

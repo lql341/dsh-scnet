@@ -1,6 +1,6 @@
 # 排查作业失败
 
-## 第一原则：不要相信 `sacct` 的 State
+## 作业状态与实际退出码
 
 bash 脚本里 Python 崩了之后，bash 继续执行后面的行，作业以**最后一条命令**的退出码
 结束。真实案例：
@@ -10,10 +10,10 @@ $ sacct -j <JOB_ID> --format=JobID,JobName,State,ExitCode,Elapsed
 <JOB_ID> | example-job | COMPLETED | 0:0 | 00:34:32
 ```
 
-看着完美，实际上 Python 在第 3 分钟就抛了 `ValueError`，日志末尾还打印了脚本里
+该记录不能证明 Python 工作负载成功。Python 可能已在第 3 分钟抛出 `ValueError`，而日志末尾仍打印脚本中
 写的 `===== COMPLETE =====`。
 
-**排查顺序永远是：读日志 → 看 State，不是反过来。**
+排查时先读取日志和工作负载退出码，再结合调度器 State 判断。
 
 预防：脚本末尾写
 
@@ -43,7 +43,7 @@ sbatch: error: min tres(gres/dcu) request 0 exceeds per-job max tres limit 1
 sbatch: error: QOSMinGRES
 ```
 
-忘了 `--gres=dcu:N`。这个分区**强制**每个作业至少 1 张 DCU，纯 CPU 作业也要写。
+该分区要求每个作业至少申请 1 张 DCU。补充 `--gres=dcu:N`；纯 CPU 负载也受该分区策略约束。
 
 ### `too much memory was requested relative to the number of CPUs`
 
@@ -82,7 +82,7 @@ httpcore.ConnectError: [Errno -2] Name or service not known
 ### `cannot get address for 'hipDrvLaunchKernelEx' from libamdhip64.so`
 
 Triton。DTK 26.04 的 HIP 运行时缺上游 ROCm 7 的 API，Triton 的 AMD backend 加载
-即失败。**放弃这条路**，包括所有依赖 Triton kernel 的框架（SGLang FP8、vLLM ROCm
+即失败。该软件栈不能使用此 Triton 路径，依赖对应 Triton kernel 的框架也不适用（SGLang FP8、vLLM ROCm
 MoE、transformers finegrained-fp8）。
 
 郑州集群最近还会先报另一种缺库：
@@ -91,7 +91,7 @@ MoE、transformers finegrained-fp8）。
 ImportError: libgcvm.so.17git: cannot open shared object file
 ```
 
-本质相同，都是 Triton 在当前 DTK/DCU 软件栈上不可用，不要继续调 Triton kernel。
+本质相同，都是 Triton 在当前 DTK/DCU 软件栈上不可用，继续调整 Triton kernel 参数不能解决该运行时缺失。
 
 ### `torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+`
 
@@ -114,7 +114,7 @@ cat: No such file or directory        ← 连日志都没有，因为写不进�
 1. `--output` / `--error` 路径里有未展开的变量（`$USER`、`$HOME`）
 2. **日志目录不存在** —— Slurm 不会自动创建
 
-修法：`#SBATCH` 里写完整字面量路径，提交前 `mkdir -p <日志目录>`。
+处理方法：`#SBATCH` 里写完整字面量路径，提交前 `mkdir -p <日志目录>`。
 `scripts/new-job.sh` 会展开好用户名并提示建目录。
 
 ### `module load` 静默失败：作业返回 0 但 `ROCM_PATH` 没设置
@@ -129,9 +129,9 @@ ROCM_PATH=未设置
 ### python exit=0      ← 作业「成功」了
 ```
 
-这比直接报错更坑，因为退出码是 0。实测于昆山集群。
+该现象可能返回退出码 0，因此还需检查模块环境变量和探针输出。该行为已在昆山集群观测。
 
-修法：shebang 用 `#!/bin/bash -l`，或在 heredoc 内包一层 `bash -l`。
+处理方法：shebang 用 `#!/bin/bash -l`，或在 heredoc 内包一层 `bash -l`。
 `scripts/new-job.sh` 生成的脚本已经用 `bash -l`。
 
 自检：作业里打印 `echo "ROCM_PATH=${ROCM_PATH:-未设置}"`，未设置就说明没生效。
@@ -145,7 +145,7 @@ ROCM_PATH=未设置
 SyntaxError: Non-ASCII character '\xe5' ... no encoding declared
 ```
 
-修法：作业脚本里显式加载 Python 3 module：
+处理方法：作业脚本里显式加载 Python 3 module：
 
 ```bash
 module load python/3.8.10
@@ -186,7 +186,7 @@ for i in range(torch.cuda.device_count()):
 
 ### 作业一直 `PD (Priority)` 不动
 
-排队等资源，正常现象。看预计启动时间：
+该状态表示等待调度资源。查询预计启动时间：
 
 ```bash
 squeue -j <ID> --start
@@ -197,15 +197,14 @@ sinfo -p <分区> -o "%n %t"           # 有几台 idle
 
 ## 调试策略
 
-**验证要便宜。** 大模型加载动辄半小时，用大作业试错代价太高。分层验证：
+按成本递增的顺序执行验证，避免使用完整模型诊断基础环境问题：
 
 1. **纯逻辑**（不需要 GPU/torch）→ 本地 Python 直接跑
 2. **需要 torch/DCU 但数据量小** → `srun` 交互式，约 5 秒拿到节点
 3. **小规模真实数据** → 2 分钟的 `sbatch` 探针作业
 4. **完整模型** → 最后才做
 
-真实教训：DeepSeek V4 的反量化实现，先写 16 项单元测试（2 分钟作业）验证数值正确，
-再跑完整模型。如果跳过第 3 步直接跑，每轮试错 30 分钟。
+例如，反量化实现应先通过小规模数值测试，再运行完整模型。
 
 **探针作业模板**：只读 metadata 不加载权重，几秒就出结果：
 
@@ -222,11 +221,11 @@ with safe_open(path, framework="pt", device="cpu") as f:
 # 作业跑在哪个节点
 squeue -j <ID> -o "%N"
 
-# 登到那个节点看进程（作业运行期间可以）
+# 在作业运行期间检查目标节点进程
 ssh <节点名> 'top -b -n1 -u $USER | head -20'
 
 # GPU 占用
 srun --jobid=<ID> --overlap rocm-smi
 ```
 
-`--overlap` 让新的 srun 步骤共享已有作业的资源分配，不用重新排队。
+`--overlap` 让新的 srun 步骤共享已有作业的资源分配，避免为诊断步骤重新申请一份资源。

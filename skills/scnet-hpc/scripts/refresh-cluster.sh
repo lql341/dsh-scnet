@@ -208,7 +208,7 @@ if [ "$COMPUTE" = yes ] && [ -n "$COMPUTE_OUT" ]; then
         IMPORT_ERR:*) KNOWN_LIMITS_NEW="${KNOWN_LIMITS_NEW:+${KNOWN_LIMITS_NEW}；}bitsandbytes 导入失败（${BNB}）" ;;
     esac
 
-    # 保留 profile 里已有的人工经验，动态结果放前面。
+    # 保留 profile 中已有的人工验证结论，并将动态结果置于前面。
     if [ -n "${KNOWN_LIMITATIONS:-}" ]; then
         OLD_IFS="$IFS"
         IFS='；'

@@ -1,3 +1,11 @@
 - insert:
+    - id: scnet-skill-filesystem
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: scnet-hpc
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
+
     - id: scnet
       name: dsh-scnet

@@ -1,29 +1,23 @@
-name: Publish dsh-scnet
+name: Publish DSH-SCNet
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_type:
-        description: "版本类型"
-        required: true
-        type: choice
-        default: "minor"
-        options:
-          - patch
-          - minor
-          - major
+  push:
+    tags:
+      - "v*"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: publish-dsh-scnet
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout dsh-scnet
+      - name: Checkout DSH-SCNet
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -31,30 +25,24 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org/
 
+      - name: Verify release tag
+        run: |
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          test "${GITHUB_REF_NAME}" = "v${PACKAGE_VERSION}"
+
       - name: Install dependencies
-        run: npm install --no-package-lock
+        run: npm install --no-package-lock --ignore-scripts
 
       - name: Validate package
-        run: |
-          node --check index.mjs
-          for script in skills/scnet-hpc/scripts/*.sh; do
-            bash -n "$script"
-          done
-          npm pack --dry-run
+        run: npm run validate
 
-      - name: Bump version, tag, and push
+      - name: Pack release artifact
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          NEW_VERSION=$(npm version "${{ github.event.inputs.release_type }}" --no-git-tag-version)
-          git add package.json
-          git commit -m "chore: release ${NEW_VERSION}"
-          git tag "${NEW_VERSION}"
-          git push origin HEAD:main
-          git push origin "${NEW_VERSION}"
+          mkdir -p .release
+          npm pack --pack-destination .release/
+          echo "RELEASE_TARBALL=.release/dsh-scnet-$(node -p 'require("./package.json").version').tgz" >> "$GITHUB_ENV"
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish "$RELEASE_TARBALL" --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
