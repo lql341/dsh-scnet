@@ -100,6 +100,8 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 
 ## License
 
-MIT
+本项目采用 [MIT License](LICENSE) 开源。除许可证正文另有规定外，使用者可以自由使用、复制、修改、合并、发布、再许可和销售本项目及其衍生作品。
+
+再发布本项目或其重要组成部分时，应保留版权声明和 MIT 许可声明。本项目按“现状”提供，不对适销性、特定用途适用性或不侵权作任何明示或默示保证；使用者应自行评估 DSH bundle、skill 说明、集群配置、脚本和生成结果在其环境中的适用性与风险。
 
 项目命名与归属声明遵循 [DeepSeek Harness 品牌素材使用规范](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.1.0-rc.8/BRAND_GUIDELINES.zh.md)。
