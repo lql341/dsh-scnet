@@ -1,6 +1,6 @@
 {
   "name": "dsh-scnet",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Community DeepSeek Harness bundle for SCNet HPC: profile-based SSH, CPU/DCU Slurm jobs, cluster probing, compute-node diagnostics, and Hygon DCU/DTK guidance.",
   "type": "module",
   "main": "./index.mjs",
