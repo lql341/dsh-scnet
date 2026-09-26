@@ -1,111 +1,63 @@
 ---
 name: scnet-hpc
-description: Configure and operate SCNet HPC clusters through SSH and Slurm, including profile-based resource requests, job submission and diagnosis, environment preparation, and accelerator compatibility checks. Use for SCNet access, Slurm CPU/DCU jobs, Hygon DCU/DTK, offline compute nodes, or adding and verifying cluster profiles. Treat other accelerator platforms as unverified until tested on their target compute nodes.
+description: Configure or operate SCNet HPC through SSH, OpenAPI, and pluggable future backends.
 ---
 
 # SCNet HPC
 
-Operate SCNet clusters from repository profiles and target-cluster evidence. The included
-accelerator guidance is validated primarily for Hygon DCU/DTK and `gfx9xx`; do not transfer
-those capability conclusions to other accelerator stacks. The repository scripts support Linux
-and macOS natively. On Windows, use WSL2; native Windows execution is not supported.
+Use the selected backend, cluster profile, and target-cluster evidence. SSH is the default;
+OpenAPI is the structured control plane. Never silently switch backends.
 
-## 中文说明
+## First use and selection
 
-本技能用于通过 SSH 和 Slurm 操作 SCNet 超算集群，覆盖基于 profile 的资源申请、作业生成与诊断、环境准备，以及加速器兼容性验证。Linux 和 macOS 可直接运行仓库脚本；Windows 不提供原生脚本入口，建议使用 WSL2。官方 SCNet 客户端支持 Windows 10 及以上、macOS 12 Monterey 及以上（ARM/x86），下载地址见 [SCNet 客户端下载页](https://www.scnet.cn/ui/mall/client/download)。
+- New machine: run `scripts/setup.sh` (Bash, dependency-light).
+- Advanced OpenAPI discovery: `python3 scripts/scnet.py setup`.
+- Read-only preflight: `python3 scripts/scnet.py doctor`.
+- Backend precedence: `--backend`, `SCNET_HPC_BACKEND`, saved setup choice, profile
+  `DEFAULT_BACKEND`, then `ssh`.
+- Read `clusters/<cluster>.conf` before reporting static facts. Treat
+  `clusters/.cache/<cluster>.auto.conf` as optional, time-sensitive SSH probe data.
+- With multiple profiles, require an explicit cluster before access changes, installation,
+  job generation, or submission. Query the selected backend for live queues, limits, and state.
 
-## Source of truth
+Read [references/backends.md](references/backends.md) for backend selection and extension.
+Read [references/openapi.md](references/openapi.md) for OpenAPI credentials and limits.
 
-- Read `clusters/<cluster>.conf` before reporting connection, partition, memory, hardware,
-  module, network, or known-limit information.
-- Treat `clusters/.cache/<cluster>.auto.conf` as optional, time-sensitive probe data that
-  overrides matching profile fields.
-- Verify dynamic scheduler state on the target cluster when the task depends on current
-  availability, limits, or node count.
-- Do not infer one cluster's parameters from another cluster.
+## Route only as needed
 
-List available profiles with:
+- SSH access: `references/setup.md`
+- Python/modules/offline dependencies: `references/environment.md`
+- Scheduler/runtime/accelerator diagnosis: `references/troubleshooting.md`
+- Add or refresh profiles: `references/adding-cluster.md`
+- Hygon DCU/DTK/HIP/profiling: `references/hygon-dcu-development.md`
+- Compatibility reports: `references/software-compatibility.md`
+- English instructions: `references/quickstart-en.md`
 
-```bash
-ls clusters/*.conf
-```
+Read only the selected profile and references needed for the current operation. Profile values
+override examples.
 
-If more than one profile exists, require an explicit cluster selection before generating a
-job, changing SSH configuration, submitting work, or installing software.
+## Boundaries and evidence
 
-## Route the task
+- Read-only inspection and local generation do not authorize remote mutation.
+- Resolve backend, target, paths, command, and expected effect before submit, cancel, upload,
+  download, overwrite, deletion, or SSH configuration. Never silently retry submission.
+- Compute probes consume scheduler resources; run them only when requested or required for
+  target-node evidence.
+- Keep credentials, tokens, personal paths, internal hosts, nodes, job IDs, and private mirrors
+  out of profiles and public reports.
+- Preserve existing SSH configuration; use `scripts/setup-ssh.sh` for bounded changes.
+- Respect profile-specific partition, GRES, memory, walltime, offline-network, and shared-storage
+  constraints. Propagate workload exit status.
+- Distinguish profile values, live scheduler state, login-node evidence, compute-node evidence,
+  and inference. Treat Hygon guidance as architecture/toolchain-specific.
 
-Read only the references required for the current operation:
+## Stable entrypoints
 
-| Operation | Reference |
-|---|---|
-| Configure or repair SSH access | `references/setup.md` |
-| Prepare Python, modules, virtual environments, or offline dependencies | `references/environment.md` |
-| Diagnose Slurm, runtime, library, network, or accelerator failures | `references/troubleshooting.md` |
-| Add or refresh a cluster profile | `references/adding-cluster.md` |
-| Work with Hygon DCU, DTK, HIP libraries, profiling, migration, or containers | `references/hygon-dcu-development.md` |
-| Evaluate software compatibility or prepare a public compatibility report | `references/software-compatibility.md` |
-| Provide English operating instructions | `references/quickstart-en.md` |
+- `scripts/setup.sh`: first-use configuration panel.
+- `python3 scripts/scnet.py ...`: backend-neutral operations, dry-run, raw output, and doctor.
+- `scripts/new-job.sh`: profile-aware Slurm generation.
+- `scripts/refresh-cluster.sh`: SSH-derived profile refresh.
+- `scripts/probe-cluster.sh`: initial profile creation.
+- `scripts/run-compute-probe.sh`: bounded accelerator probe.
 
-Cluster parameters always come from the selected profile, including when an example in a
-reference uses different values.
-
-## Execution boundaries
-
-- Read-only inspection and local script generation do not authorize SSH configuration changes,
-  dependency installation, job submission, job cancellation, or remote file deletion.
-- Before a remote mutation, resolve the target cluster, command, paths, and expected effect.
-- A compute-node probe consumes scheduler resources. Run it only when the user requests
-  submission or verification that requires compute-node evidence.
-- Preserve existing SSH configuration. `scripts/setup-ssh.sh` adds a missing host entry and
-  backs up a conflicting destination key; it does not rewrite an existing host block.
-- Do not place credentials, usernames, internal hosts, node names, job IDs, private mirrors, or
-  absolute home paths in committed profiles or public reports.
-
-## Operational invariants
-
-1. **Scheduler constraints are profile-specific.** If `MIN_GRES` is non-empty, request at least
-   that accelerator resource unless an independent CPU partition is selected.
-2. **Memory requests follow the partition limit.** When `DEF_MEM_PER_CPU` is defined, keep
-   requested memory within `cpus-per-task × DEF_MEM_PER_CPU`. Use `scripts/new-job.sh` to
-   calculate a conservative value.
-3. **Framework validation belongs on compute nodes.** A login node may lack accelerator
-   libraries even after modules are loaded. Use `srun`, `sbatch`, or the compute probe for
-   imports, kernels, collectives, and accelerator capabilities.
-4. **Offline nodes require staged dependencies.** When `COMPUTE_NODE_OFFLINE=yes`, download or
-   build dependencies on a networked node and disable runtime downloads in the job.
-5. **Test files use shared storage.** Create per-job temporary directories under
-   `$HOME/.scnet-hpc/tmp/$SLURM_JOB_ID`; do not depend on `/tmp` being shared across nodes.
-6. **Job exit status must propagate.** Capture the workload return code and terminate the batch
-   script with `exit "$rc"`. Evaluate both accounting state and job logs.
-7. **Compatibility claims require target-node evidence.** Package resolution or import success
-   alone is insufficient for native extensions and accelerator software. Validate the relevant
-   ABI, import, kernel, functional, and end-to-end layers.
-
-## Repository tools
-
-| Tool | Purpose |
-|---|---|
-| `scripts/setup-ssh.sh` | Install a supplied key and add an SSH host entry |
-| `scripts/new-job.sh` | Generate a profile-aware Slurm script |
-| `scripts/probe-cluster.sh` | Produce an initial profile from read-only login-node probes |
-| `scripts/refresh-cluster.sh` | Refresh dynamic profile fields; compute probing is opt-in |
-| `scripts/run-compute-probe.sh` | Submit a minimal accelerator capability probe |
-
-Use `scripts/new-job.sh --cluster <name> ...` for routine job generation. Validate the generated
-script with `sbatch --test-only` before submission when the target cluster supports it.
-
-## Evidence and reporting
-
-Distinguish:
-
-- profile values;
-- live scheduler observations;
-- login-node observations;
-- compute-node observations;
-- conclusions inferred from those observations.
-
-For failures, report the failing command, relevant log excerpt, scheduler state and exit code,
-target profile, and the next bounded diagnostic action. For compatibility results, state the
-software and toolchain versions, accelerator architecture, validation layer reached, and
-untested boundaries.
+Use compact normalized output by default. Request raw backend data only for diagnosis.

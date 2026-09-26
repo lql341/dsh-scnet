@@ -36,10 +36,13 @@ rm -rf "$DST/clusters/.cache"
 cp -R "$SRC/references" "$DST/references"
 
 mkdir -p "$DST/scripts"
-for f in _common.sh new-job.sh setup-ssh.sh probe-cluster.sh refresh-cluster.sh run-compute-probe.sh compute-probe.py; do
+for f in _common.sh new-job.sh setup-ssh.sh probe-cluster.sh refresh-cluster.sh run-compute-probe.sh compute-probe.py setup.sh scnet.py scnet_config.py; do
   [ -f "$SRC/scripts/$f" ] && cp "$SRC/scripts/$f" "$DST/scripts/$f"
 done
+rm -rf "$DST/scripts/scnet_backends"
+cp -R "$SRC/scripts/scnet_backends" "$DST/scripts/scnet_backends"
 chmod +x "$DST/scripts/"*.sh
+chmod +x "$DST/scripts/scnet.py"
 
 echo "已同步：$SRC -> $DST"
 find "$DST" -maxdepth 2 -print | sort
