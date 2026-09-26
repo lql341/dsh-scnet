@@ -19,6 +19,28 @@ Check at least `PARTITION`, `PARTITION_CPU`, `GRES_TYPE`, `MIN_GRES`,
 `DEF_MEM_PER_CPU`, `MODULE_LOADS`, `COMPUTE_NODE_OFFLINE`, and
 `KNOWN_LIMITATIONS`.
 
+On a new computer, run the Bash setup panel and then its read-only doctor:
+
+```bash
+./scripts/setup.sh
+python3 scripts/scnet.py doctor
+```
+
+List available access backends:
+
+```bash
+python3 scripts/scnet.py backends
+```
+
+SSH is the default. Use OpenAPI for structured queue, limit, job, log, and file operations:
+
+```bash
+python3 scripts/scnet.py --backend openapi clusters
+python3 scripts/scnet.py --backend openapi --region <region-id> queues
+```
+
+See `references/backends.md` and `references/openapi.md` before configuring another backend.
+
 ## 2. Install the skill
 
 ```bash

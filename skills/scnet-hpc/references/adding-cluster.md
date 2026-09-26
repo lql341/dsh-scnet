@@ -134,12 +134,17 @@ Triton 是多种推理框架的运行前提；不可用时，对应的 Triton �
 
 ## profile 字段参考
 
-必填三项：`CLUSTER_ID`、`SSH_HOST`、`SSH_PORT`。其余留空则脚本跳过、文档显示为未探测。
+`CLUSTER_ID` 是 profile 标识。使用 SSH backend 时还需要 `SSH_HOST` 和 `SSH_PORT`；
+使用 OpenAPI backend 时需要 `OPENAPI_REGION_ID`，区域存在多个调度器时再填写
+`OPENAPI_SCHEDULER_ID`。不得把 AK、SK 或 token 写进 profile。
 
 影响脚本行为的关键项：
 
 | 字段 | 谁用 | 留空的后果 |
 |---|---|---|
+| `DEFAULT_BACKEND` | `scnet.py` | 默认使用 `ssh` |
+| `OPENAPI_REGION_ID` | OpenAPI backend | 多区域账户需要每次显式传 `--region` |
+| `OPENAPI_SCHEDULER_ID` | OpenAPI backend | 多调度器区域需要每次显式传 `--scheduler-id` |
 | `MIN_GRES` | 文档提示 | 不提示 QOS 强制申请加速器 |
 | `GRES_TYPE` | `new-job.sh` | 生成的脚本不含 `--gres` |
 | `DEF_MEM_PER_CPU` | `new-job.sh` | 生成的脚本不含 `--mem`，需手填 |
