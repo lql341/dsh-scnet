@@ -95,7 +95,38 @@ if awk -v alias="$CLUSTER_ID" '
         $1 == "Host" { for (i = 2; i <= NF; i++) if ($i == alias) { found = 1; exit } }
         END { exit(found ? 0 : 1) }
     ' "$SSH_CONFIG"; then
-    info "已存在 Host ${CLUSTER_ID}，跳过（如需重配请先手工删除该段）"
+    # 只更新由本工具创建的块：旧版本没有 marker，但 IdentityFile 指向同一目标。
+    if awk -v alias="$CLUSTER_ID" -v key="$KEY_DST" '
+            $1 == "Host" {
+                in_block = 0
+                for (i = 2; i <= NF; i++) if ($i == alias) in_block = 1
+            }
+            in_block && $1 == "IdentityFile" && $2 == key { managed = 1 }
+            END { exit(managed ? 0 : 1) }
+        ' "$SSH_CONFIG"; then
+        backup="$SSH_CONFIG.bak.$(date +%Y%m%d%H%M%S)"
+        cp "$SSH_CONFIG" "$backup"
+        temporary=$(mktemp "$HOME/.ssh/config.XXXXXX")
+        awk -v alias="$CLUSTER_ID" -v host="$SSH_HOST" -v port="$SSH_PORT" \
+            -v user="$USER_NAME" -v key="$KEY_DST" '
+            $1 == "Host" {
+                in_block = 0
+                for (i = 2; i <= NF; i++) if ($i == alias) in_block = 1
+                print
+                next
+            }
+            in_block && $1 == "HostName" { print "  HostName " host; next }
+            in_block && $1 == "User" { print "  User " user; next }
+            in_block && $1 == "Port" { print "  Port " port; next }
+            in_block && $1 == "IdentityFile" { print "  IdentityFile " key; next }
+            { print }
+        ' "$SSH_CONFIG" >"$temporary"
+        chmod 600 "$temporary"
+        mv "$temporary" "$SSH_CONFIG"
+        info "已更新 Host ${CLUSTER_ID}（备份：$(basename "$backup")）"
+    else
+        info "已存在非本工具管理的 Host ${CLUSTER_ID}，保留原配置；私钥文件已更新"
+    fi
 else
     # macOS 的 ssh-agent 能存进 Keychain；Linux 上这两个选项不被识别
     keychain_opts=""
@@ -115,6 +146,7 @@ else
 
     cat >> "$SSH_CONFIG" <<EOF
 
+# scnet-hpc managed: ${CLUSTER_ID}
 Host ${CLUSTER_ID} ${SSH_HOST}
   HostName ${SSH_HOST}
   User ${USER_NAME}

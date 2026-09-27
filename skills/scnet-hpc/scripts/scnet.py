@@ -4,15 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import getpass
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from scnet_backends import BackendContext, BackendError, backend_catalog, create_backend
 from scnet_backends.profile import list_profiles, load_profile
@@ -21,6 +23,12 @@ from scnet_config import (
     load_user_config,
     redacted_config,
     save_user_config,
+)
+from scnet_credentials import (
+    CredentialError,
+    load_openapi_credentials,
+    secure_store_name,
+    store_openapi_credentials,
 )
 
 
@@ -73,6 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-connect",
         action="store_true",
         help="save non-secret choices without testing or changing remote access",
+    )
+    setup.add_argument(
+        "--mode",
+        choices=("all", "ssh", "openapi"),
+        default="all",
+        help="limit the configuration panel to one backend",
     )
     doctor = subparsers.add_parser(
         "doctor", help="check first-use configuration without changing it"
@@ -291,151 +305,223 @@ def _openapi_probe(
     return backend.discover_region_context(region)
 
 
-def setup_panel() -> dict[str, Any]:
+def _key_expiry_from_name(path: str) -> str:
+    match = re.search(
+        r"RsaKeyExpireTime[_-](\d{4}-\d{2}-\d{2})",
+        Path(path).name,
+    )
+    return match.group(1) if match else ""
+
+
+def _detect_ssh_username(
+    cluster: str,
+    profile: Mapping[str, str],
+    key_path: str,
+    existing: Mapping[str, Any],
+) -> str:
+    username = str(existing.get("username") or "")
+    if username:
+        return username
+    marker = profile.get("KEY_NAME_MARKER", "")
+    filename = Path(key_path).name if key_path else ""
+    if marker and "<" not in marker and marker in filename:
+        candidate = filename.split(marker, 1)[0]
+        if candidate:
+            return candidate
+    host_marker = f"_{profile.get('SSH_HOST', '')}_"
+    if profile.get("SSH_HOST") and host_marker in filename:
+        candidate = filename.split(host_marker, 1)[0]
+        if candidate:
+            return candidate
+    if shutil.which("ssh"):
+        completed = subprocess.run(
+            ["ssh", "-G", cluster],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        resolved: dict[str, str] = {}
+        for line in completed.stdout.splitlines():
+            key, _, value = line.partition(" ")
+            if key in {"hostname", "user"} and value:
+                resolved[key] = value
+        if (
+            completed.returncode == 0
+            and resolved.get("hostname") == profile.get("SSH_HOST")
+        ):
+            return resolved.get("user", "")
+    return ""
+
+
+def _ssh_key_metadata(cluster: str, source: str, username: str) -> dict[str, Any]:
+    installed = Path.home() / ".ssh" / f"id_rsa_{cluster}"
+    metadata: dict[str, Any] = {
+        "username": username,
+        "key_path": str(installed),
+        "key_source_name": Path(source).name,
+        "updated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    expiry = _key_expiry_from_name(source)
+    if expiry:
+        metadata["key_expires_at"] = expiry
+    if installed.is_file() and shutil.which("ssh-keygen"):
+        completed = subprocess.run(
+            ["ssh-keygen", "-lf", str(installed)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if completed.returncode == 0:
+            fields = completed.stdout.split()
+            if len(fields) >= 2:
+                metadata["key_fingerprint"] = fields[1]
+    return metadata
+
+
+def setup_panel(mode: str = "all") -> dict[str, Any]:
     profiles = list_profiles(REPO_ROOT)
     if not profiles:
         raise BackendError("clusters/ 下没有 profile")
     current = load_user_config()
-    print("\nSCNet HPC 首次配置面板")
-    print("======================")
-    print("只保存非敏感配置；AK/SK/token 仅用于本次验证，不会写入配置文件。\n")
+    print("\nSCNet HPC 配置/维护面板")
+    print("=======================")
+    print("自动探测区域、调度器和 SSH 元数据；只要求输入必要凭据。\n")
 
-    profile_names = [item["name"] for item in profiles]
-    current_cluster = str(current.get("cluster") or "")
-    default_cluster = (
-        profile_names.index(current_cluster) + 1
-        if current_cluster in profile_names
-        else 1
-    )
-    cluster = _choose("选择默认集群 profile：", profile_names, default_cluster)
-    _, profile = load_profile(REPO_ROOT, cluster)
+    current_default = str(current.get("default_backend") or "ssh")
+    if mode == "all":
+        backend = _choose(
+            "选择默认 backend：",
+            ["SSH（推荐，支持环境和深度诊断）", "OpenAPI（结构化控制面）"],
+            1 if current_default == "ssh" else 2,
+        )
+        default_backend = "ssh" if backend.startswith("SSH") else "openapi"
+        configure_ssh = _ask_yes_no(
+            "是否添加或更新一个 SSH 区域？", default=default_backend == "ssh"
+        )
+        configure_openapi = _ask_yes_no(
+            "是否配置或刷新 OpenAPI？", default=default_backend == "openapi"
+        )
+    else:
+        default_backend = mode
+        configure_ssh = mode == "ssh"
+        configure_openapi = mode == "openapi"
 
-    backend = _choose(
-        "选择默认 backend：",
-        ["SSH（推荐，支持环境和深度诊断）", "OpenAPI（结构化控制面）"],
-        1 if current.get("default_backend", "ssh") == "ssh" else 2,
-    )
-    default_backend = "ssh" if backend.startswith("SSH") else "openapi"
-    configure_ssh = _ask_yes_no(
-        "是否配置 SSH backend？", default=default_backend == "ssh"
-    )
-    configure_openapi = _ask_yes_no(
-        "是否验证 OpenAPI backend？", default=default_backend == "openapi"
-    )
     result: dict[str, Any] = dict(current)
-    result.update(
-        {
-            "version": 1,
-            "cluster": cluster,
-            "default_backend": default_backend,
-        }
-    )
+    result.update({"version": 1, "default_backend": default_backend})
     skip_connect = bool(getattr(setup_panel, "_skip_connect", False))
+    selected_cluster = str(current.get("cluster") or "")
 
     if configure_ssh:
+        profile_names = [item["name"] for item in profiles]
+        default_cluster = (
+            profile_names.index(selected_cluster) + 1
+            if selected_cluster in profile_names
+            else 1
+        )
+        cluster = _choose("选择要配置或更新的 SSH 区域：", profile_names, default_cluster)
+        selected_cluster = cluster
+        result["cluster"] = cluster
+        _, profile = load_profile(REPO_ROOT, cluster)
         existing_ssh = current.get("ssh", {})
         if not isinstance(existing_ssh, dict):
             existing_ssh = {}
+        existing_clusters = existing_ssh.get("clusters", {})
+        if not isinstance(existing_clusters, dict):
+            existing_clusters = {}
+        existing_profile = existing_clusters.get(cluster, {})
+        if not isinstance(existing_profile, dict):
+            existing_profile = {}
+        key_path = ""
+        if not skip_connect:
+            key_path = str(Path(_ask("私钥文件路径")).expanduser())
+            if not key_path or not Path(key_path).is_file():
+                raise BackendError(f"找不到私钥文件: {key_path}")
+        detected_user = _detect_ssh_username(
+            cluster, profile, key_path, existing_profile
+        )
         username = _ask(
-            "远端用户名",
-            str(existing_ssh.get("username") or ""),
+            "远端用户名（已自动探测，可直接回车）",
+            detected_user,
         )
         if not username:
-            raise BackendError("SSH 配置需要远端用户名")
-        result["ssh"] = {"username": username}
+            raise BackendError("无法自动探测 SSH 用户名，请手工输入")
+        clusters = dict(existing_clusters)
+        clusters[cluster] = {**existing_profile, "username": username}
+        result["ssh"] = {"clusters": clusters}
         if skip_connect:
             print("已按 --skip-connect 跳过私钥安装和 SSH 测试。")
         else:
-            key_path = str(Path(_ask("私钥文件路径")).expanduser())
-            if not key_path:
-                raise BackendError("SSH 配置需要私钥路径")
-            if not _ask_yes_no("确认写入 ~/.ssh 并测试 SSH 连接？", default=True):
+            if not _ask_yes_no("确认安装/轮换私钥并测试连接？", default=True):
                 print("已跳过 SSH 写入；可稍后单独运行 setup-ssh.sh。")
             else:
                 _run_setup_ssh(cluster, key_path, username)
+                clusters[cluster] = _ssh_key_metadata(
+                    cluster, key_path, username
+                )
 
     if configure_openapi:
         existing_openapi = current.get("openapi", {})
         if not isinstance(existing_openapi, dict):
             existing_openapi = {}
         if skip_connect:
-            region = _ask(
-                "区域 ID",
-                str(
-                    existing_openapi.get("region_id")
-                    or profile.get("OPENAPI_REGION_ID")
-                    or ""
-                ),
-            )
-            scheduler_id = _ask(
-                "调度器 ID（未知可留空）",
-                str(existing_openapi.get("scheduler_id") or ""),
-            )
-            api_username = _ask(
-                "区域用户名（未知可留空）",
-                str(existing_openapi.get("username") or ""),
-            )
-            if not region:
-                raise BackendError("OpenAPI 配置需要区域 ID")
-            result["openapi"] = {
-                "region_id": region,
-                "scheduler_id": scheduler_id,
-                "username": api_username,
-            }
-            print("已按 --skip-connect 保存 OpenAPI 选择，未验证凭据或区域。")
+            print("已按 --skip-connect 跳过 OpenAPI 认证和区域发现。")
         else:
-            auth_mode = _choose(
-                "选择 OpenAPI 认证方式：",
-                ["AK/SK（推荐）", "已有区域 token（临时）"],
-                1,
+            saved_credentials, saved_provider = load_openapi_credentials()
+            use_saved = bool(saved_credentials) and _ask_yes_no(
+                f"检测到 {saved_provider} 中的 OpenAPI 凭据，是否使用？",
+                default=True,
             )
-            if auth_mode.startswith("AK/SK"):
-                api_user = _ask("平台用户名")
+            entered_credentials = not use_saved
+            if use_saved and saved_credentials:
+                api_user = saved_credentials["user"]
+                access_key = saved_credentials["access_key"]
+                secret_key = saved_credentials["secret_key"]
+            else:
+                api_user = _ask(
+                    "平台用户名",
+                    str(existing_openapi.get("platform_user") or ""),
+                )
                 access_key = _ask_secret("AccessKey")
                 secret_key = _ask_secret("SecretKey")
                 if not api_user or not access_key or not secret_key:
                     raise BackendError("AK/SK 配置不完整")
-                backend_instance, previous = _with_openapi_credentials(
-                    profile,
-                    user=api_user,
-                    access_key=access_key,
-                    secret_key=secret_key,
-                )
-            else:
-                token_region = _ask(
-                    "区域 ID",
-                    str(
-                        existing_openapi.get("region_id")
-                        or profile.get("OPENAPI_REGION_ID")
-                        or ""
-                    ),
-                )
-                if not token_region:
-                    raise BackendError("使用区域 token 时必须提供区域 ID")
-                token = _ask_secret("区域 token")
-                if not token:
-                    raise BackendError("区域 token 不能为空")
-                backend_instance, previous = _with_openapi_credentials(
-                    profile, token=token, region_id=token_region
-                )
+            backend_instance, previous = _with_openapi_credentials(
+                {},
+                user=api_user,
+                access_key=access_key,
+                secret_key=secret_key,
+            )
             try:
-                regions = [
-                    item
-                    for item in backend_instance.discover_regions()
-                    if str(item.get("clusterId", "")) != "0" and item.get("token")
-                ]
-                if not regions:
+                contexts = backend_instance.discover_all_region_contexts()
+                if not contexts:
                     raise BackendError("账号没有可用的 OpenAPI 计算区域")
+                print("\n已自动发现授权区域：")
+                for item in contexts:
+                    scheduler_names = ", ".join(
+                        str(scheduler.get("name") or scheduler.get("id"))
+                        for scheduler in item["schedulers"]
+                    )
+                    print(
+                        f"  - {item.get('name')} ({item['region_id']})"
+                        f" / user={item.get('username')}"
+                        f" / scheduler={scheduler_names or 'none'}"
+                    )
                 region_labels = [
-                    f"{item.get('clusterName')} ({item.get('clusterId')})"
-                    for item in regions
+                    f"{item.get('name')} ({item['region_id']})"
+                    for item in contexts
                 ]
-                existing_region = str(existing_openapi.get("region_id") or "")
+                existing_region = str(
+                    existing_openapi.get("default_region_id")
+                    or existing_openapi.get("region_id")
+                    or ""
+                )
                 default_region = next(
                     (
                         index
-                        for index, item in enumerate(regions, 1)
-                        if str(item.get("clusterId")) == existing_region
+                        for index, item in enumerate(contexts, 1)
+                        if item["region_id"] == existing_region
                     ),
                     1,
                 )
@@ -443,31 +529,63 @@ def setup_panel() -> dict[str, Any]:
                     "选择 OpenAPI 区域：", region_labels, default_region
                 )
                 selected_index = region_labels.index(selected_label)
-                region = str(regions[selected_index]["clusterId"])
-                discovered = _openapi_probe(backend_instance, region)
+                selected = contexts[selected_index]
             finally:
                 _restore_environment(previous)
+            stored_provider = saved_provider
+            if entered_credentials and secure_store_name():
+                if _ask_yes_no(
+                    f"是否将 AK/SK 保存到 {secure_store_name()}？",
+                    default=True,
+                ):
+                    try:
+                        provider = store_openapi_credentials(
+                            api_user, access_key, secret_key
+                        )
+                        stored_provider = provider
+                        print(f"OpenAPI 凭据已保存到 {provider}。")
+                    except CredentialError as exc:
+                        print(f"无法保存到安全凭据库：{exc}")
+            selected_schedulers = selected.get("schedulers") or []
+            default_scheduler = (
+                selected_schedulers[0].get("id")
+                if len(selected_schedulers) == 1
+                else ""
+            )
             result["openapi"] = {
-                "region_id": discovered["region_id"],
-                "region_name": discovered.get("region_name"),
-                "scheduler_id": discovered.get("scheduler_id"),
-                "username": discovered.get("username"),
+                "platform_user": api_user,
+                "credential_provider": stored_provider,
+                "default_region_id": selected["region_id"],
+                "region_id": selected["region_id"],
+                "region_name": selected.get("name"),
+                "scheduler_id": default_scheduler,
+                "username": selected.get("username"),
+                "regions": {
+                    item["region_id"]: {
+                        "name": item.get("name"),
+                        "available": True,
+                        "username": item.get("username"),
+                        "home_path": item.get("home_path"),
+                        "schedulers": item.get("schedulers"),
+                    }
+                    for item in contexts
+                },
             }
             print(
-                f"OpenAPI 验证成功："
-                f"{discovered.get('region_name') or discovered['region_id']} "
-                f"/ scheduler {discovered['scheduler_id']} "
-                f"/ user {discovered['username']}"
+                f"默认 OpenAPI 区域："
+                f"{selected.get('name') or selected['region_id']}"
             )
 
+    if selected_cluster:
+        result["cluster"] = selected_cluster
     path = save_user_config(result)
     print(f"\n已保存非敏感配置：{path}")
     print("后续可用 `python3 scripts/scnet.py config` 查看。")
-    if configure_openapi:
-        print("OpenAPI 凭据没有保存；请通过凭据管理器或环境变量注入。")
-    print(
-        f"下一步：python3 scripts/scnet.py --cluster {shlex.quote(cluster)} doctor"
-    )
+    if configure_openapi and not secure_store_name():
+        print("系统没有可用安全凭据库；请通过环境变量注入 AK/SK。")
+    doctor_cluster = selected_cluster or str(current.get("cluster") or "")
+    suffix = f" --cluster {shlex.quote(doctor_cluster)}" if doctor_cluster else ""
+    print(f"下一步：python3 scripts/scnet.py{suffix} doctor")
     return result
 
 
@@ -556,33 +674,79 @@ def doctor_report(
                     if completed.returncode == 0
                     else (completed.stderr.strip() or "连接失败"),
                 )
+            ssh_config = user_config.get("ssh", {})
+            ssh_clusters = (
+                ssh_config.get("clusters", {})
+                if isinstance(ssh_config, dict)
+                else {}
+            )
+            metadata = (
+                ssh_clusters.get(profile_name, {})
+                if isinstance(ssh_clusters, dict) and profile_name
+                else {}
+            )
+            if isinstance(metadata, dict):
+                key_path = metadata.get("key_path")
+                if key_path:
+                    expanded = Path(str(key_path)).expanduser()
+                    add(
+                        "ssh_key",
+                        expanded.is_file(),
+                        str(expanded) if expanded.is_file() else f"找不到 {expanded}",
+                    )
+                expiry = metadata.get("key_expires_at")
+                if expiry:
+                    try:
+                        expiry_date = dt.date.fromisoformat(str(expiry))
+                        days = (expiry_date - dt.date.today()).days
+                        add(
+                            "ssh_key_expiry",
+                            days >= 0,
+                            f"{expiry}（剩余 {days} 天）"
+                            if days >= 0
+                            else f"{expiry}（已过期 {abs(days)} 天）",
+                        )
+                    except ValueError:
+                        add("ssh_key_expiry", False, f"无法解析日期: {expiry}")
         elif not no_network:
             add("ssh_connection", False, "缺少 profile 或 ssh 命令")
 
     elif backend_name == "openapi":
         has_token = bool(os.environ.get("SCNET_OPENAPI_TOKEN"))
-        has_aksk = all(
-            os.environ.get(name)
-            for name in (
-                "SCNET_OPENAPI_USER",
-                "SCNET_OPENAPI_ACCESS_KEY",
-                "SCNET_OPENAPI_SECRET_KEY",
-            )
-        )
+        credentials, credential_provider = load_openapi_credentials()
+        has_aksk = bool(credentials)
         add(
             "openapi_credentials",
             has_token or has_aksk,
             "检测到区域 token"
             if has_token
-            else ("检测到 AK/SK" if has_aksk else "未检测到 OpenAPI 凭据"),
+            else (
+                f"检测到 AK/SK（{credential_provider}）"
+                if has_aksk
+                else "未检测到 OpenAPI 凭据"
+            ),
         )
         openapi_config = user_config.get("openapi", {})
         region = (
-            openapi_config.get("region_id")
+            (
+                openapi_config.get("default_region_id")
+                or openapi_config.get("region_id")
+            )
             if isinstance(openapi_config, dict)
             else None
         )
         add("openapi_region", bool(region), str(region or "未配置区域"))
+        cached_regions = (
+            openapi_config.get("regions")
+            if isinstance(openapi_config, dict)
+            else None
+        )
+        if isinstance(cached_regions, dict):
+            add(
+                "openapi_region_cache",
+                bool(cached_regions),
+                f"已缓存区域数={len(cached_regions)}",
+            )
         if not no_network and (has_token or has_aksk):
             context = BackendContext(
                 repo_root=REPO_ROOT,
@@ -644,7 +808,7 @@ def main(argv: list[str] | None = None) -> int:
             backend_name = None
         elif args.operation == "setup":
             setup_panel._skip_connect = args.skip_connect
-            data = setup_panel()
+            data = setup_panel(args.mode)
             backend_name = data.get("default_backend")
         elif args.operation == "config":
             data = redacted_config(user_config)
@@ -662,14 +826,36 @@ def main(argv: list[str] | None = None) -> int:
             options = vars(args).copy()
             openapi_config = user_config.get("openapi", {})
             if isinstance(openapi_config, dict):
-                options["region"] = options.get("region") or openapi_config.get(
-                    "region_id"
+                region = (
+                    options.get("region")
+                    or openapi_config.get("default_region_id")
+                    or openapi_config.get("region_id")
                 )
-                options["scheduler_id"] = options.get(
-                    "scheduler_id"
-                ) or openapi_config.get("scheduler_id")
-                options["username"] = options.get("username") or openapi_config.get(
-                    "username"
+                options["region"] = region
+                region_config: dict[str, Any] = {}
+                regions = openapi_config.get("regions")
+                if isinstance(regions, dict) and region:
+                    candidate = regions.get(str(region))
+                    if isinstance(candidate, dict):
+                        region_config = candidate
+                scheduler_id = (
+                    options.get("scheduler_id")
+                    or openapi_config.get("scheduler_id")
+                )
+                schedulers = region_config.get("schedulers")
+                if not scheduler_id and isinstance(schedulers, list):
+                    available = [
+                        item
+                        for item in schedulers
+                        if isinstance(item, dict) and item.get("id")
+                    ]
+                    if len(available) == 1:
+                        scheduler_id = available[0]["id"]
+                options["scheduler_id"] = scheduler_id
+                options["username"] = (
+                    options.get("username")
+                    or region_config.get("username")
+                    or openapi_config.get("username")
                 )
             if args.dry_run:
                 if args.operation not in MUTATING_OPERATIONS:
