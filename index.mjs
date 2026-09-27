@@ -31,6 +31,35 @@ function runBash(script, args, timeoutMs = 120000, cwd = SKILL_DIR) {
   })
 }
 
+function runScnet(args, timeoutMs = 120000) {
+  return new Promise((resolve) => {
+    execFile(
+      'python3',
+      [join(SCRIPTS_DIR, 'scnet.py'), '--json', ...args],
+      { cwd: SKILL_DIR, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        const code = error ? (typeof error.code === 'number' ? error.code : 1) : 0
+        resolve({
+          ok: code === 0,
+          code,
+          stdout: String(stdout || ''),
+          stderr: String(stderr || ''),
+        })
+      },
+    )
+  })
+}
+
+function scnetResult(res, action) {
+  if (res.ok) return res.stdout.trim() || '{}'
+  return `${action}失败（exit ${res.code}）：\n${res.stderr.trim() || res.stdout.trim()}`
+}
+
+function regionArgs(region) {
+  const value = String(region || '').trim()
+  return value ? ['--region', value] : []
+}
+
 function textBlock(value) {
   return [{ type: 'text', text: value }]
 }
@@ -87,6 +116,161 @@ export function apply(ctx) {
           lines.push(`${id}\t${fieldOf(text, 'CLUSTER_DESC') || '（未填写描述）'}`)
         }
         return lines.join('\n')
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_status',
+      description: '只读查看 scnet-hpc 当前默认 backend、SSH profile 和 OpenAPI 区域配置；不会连接远端或修改配置。',
+      parameters: {},
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute() {
+        return scnetResult(await runScnet(['config']), '读取 SCNet 配置')
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_openapi_regions',
+      description: '通过已配置的 SCNet OpenAPI 凭据只读列出授权计算区域，不显示 token。',
+      parameters: {},
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute() {
+        return scnetResult(
+          await runScnet(['--backend', 'openapi', 'clusters']),
+          '查询 OpenAPI 区域',
+        )
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_job_queues',
+      description: '通过 OpenAPI 只读查询目标区域可访问的 Slurm 队列、空闲资源和单作业限制。',
+      parameters: {
+        region: { type: 'string', description: '区域名称或 ID；省略时使用已保存的默认区域' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        return scnetResult(
+          await runScnet(['--backend', 'openapi', ...regionArgs(args.region), 'queues']),
+          '查询作业队列',
+        )
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_file_list',
+      description: '通过 OpenAPI 只读列出区域共享存储中的文件和目录。',
+      parameters: {
+        region: { type: 'string', description: '区域名称或 ID；省略时使用默认区域' },
+        path: { type: 'string', description: '绝对目录路径；省略时使用区域用户主目录' },
+        limit: { type: 'number', description: '最多返回条数，默认 100' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const argv = ['--backend', 'openapi', ...regionArgs(args.region), 'files']
+        if (args.path) argv.push('--path', String(args.path))
+        if (args.limit) argv.push('--limit', String(args.limit))
+        return scnetResult(await runScnet(argv), '查询文件')
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_notebook_regions',
+      description: '只读列出支持 SCNet Notebook 服务的授权区域。',
+      parameters: {},
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute() {
+        return scnetResult(
+          await runScnet(['--backend', 'openapi', 'notebook', 'regions']),
+          '查询 Notebook 区域',
+        )
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_notebook_resources',
+      description: '只读查询目标区域可用于 Notebook 的 CPU/GPU/DCU 资源及当前空闲卡数。',
+      parameters: {
+        region: { type: 'string', description: '区域名称或 ID；省略时使用默认区域' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const argv = ['--backend', 'openapi', 'notebook', 'resources']
+        if (args.region) argv.push('--region', String(args.region))
+        return scnetResult(await runScnet(argv), '查询 Notebook 资源')
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_notebook_list',
+      description: '只读列出目标区域的 Notebook 实例；密码和带凭据的 URL 默认脱敏。',
+      parameters: {
+        region: { type: 'string', description: '区域名称或 ID；省略时使用默认区域' },
+        status: { type: 'string', description: '可选状态过滤，如 Running、Terminated、Failed' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const argv = ['--backend', 'openapi', 'notebook', 'list']
+        if (args.region) argv.push('--region', String(args.region))
+        if (args.status) argv.push('--status', String(args.status))
+        return scnetResult(await runScnet(argv), '查询 Notebook 实例')
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_notebook_show',
+      description: '只读查询一个 Notebook 实例详情；敏感字段默认脱敏。',
+      parameters: {
+        notebook_id: { type: 'string', required: true, description: 'Notebook 实例 ID' },
+        region: { type: 'string', description: '区域名称或 ID；省略时使用默认区域' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const id = String(args.notebook_id || '').trim()
+        if (!id) return '缺少必填参数 notebook_id。'
+        const argv = ['--backend', 'openapi', 'notebook', 'show', id]
+        if (args.region) argv.push('--region', String(args.region))
+        return scnetResult(await runScnet(argv), '查询 Notebook 详情')
       },
     }),
   )

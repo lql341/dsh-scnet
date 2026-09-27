@@ -1,7 +1,7 @@
 {
   "name": "dsh-scnet",
-  "version": "0.4.2",
-  "description": "Community DeepSeek Harness bundle for SCNet HPC: profile-based SSH, CPU/DCU Slurm jobs, cluster probing, compute-node diagnostics, and Hygon DCU/DTK guidance.",
+  "version": "0.5.0",
+  "description": "Community DeepSeek Harness bundle for SCNet SSH and OpenAPI jobs, files, Notebook resources, Slurm diagnostics, and Hygon DCU/DTK guidance.",
   "type": "module",
   "main": "./index.mjs",
   "exports": {
@@ -43,6 +43,8 @@
     "dsh-plugin",
     "dsh-bundle",
     "slurm",
+    "openapi",
+    "notebook",
     "hpc",
     "hygon",
     "dcu",

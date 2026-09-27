@@ -71,3 +71,14 @@ DEEPSEEK_API_KEY: sk-你的key
 ```
 
 保存后无需重启，下一次请求即生效。Key 只保存在本机 `~/.dsh` 下，不会写入仓库。
+
+## 配置 SCNet OpenAPI
+
+SCNet OpenAPI 使用平台用户名、AccessKey 和 SecretKey：
+
+```sh
+python3 skills/scnet-hpc/scripts/scnet.py setup modify --mode openapi
+```
+
+macOS 可保存到 Keychain。Linux 安装 `libsecret-tools` 后使用 Secret Service；否则通过
+文档定义的 `SCNET_OPENAPI_*` 环境变量注入。OpenAPI 凭据不会写入插件仓库。

@@ -58,3 +58,13 @@ dsh web
 ## Credentials
 
 Model credentials belong in the DSH credential store or its supported settings interface. SCNet private keys remain local and are supplied only when the user explicitly invokes SSH setup. Neither credential type belongs in this repository.
+
+SCNet OpenAPI uses a platform username, AccessKey, and SecretKey. Configure them through the
+bundled Skill:
+
+```sh
+python3 skills/scnet-hpc/scripts/scnet.py setup modify --mode openapi
+```
+
+On macOS credentials can be stored in Keychain. On Linux, install `libsecret-tools` for Secret
+Service; otherwise inject the documented `SCNET_OPENAPI_*` environment variables.

@@ -37,6 +37,14 @@ Confirm that the composed configuration includes:
 | `scnet_list_clusters` | Returns the packaged cluster identifiers |
 | `scnet_show_cluster` | Returns the selected profile contents |
 | `scnet_generate_job` | Writes a profile-aware Slurm script in the current directory |
+| `scnet_status` | Returns redacted local SCNet configuration |
+| `scnet_openapi_regions` | Returns authorized regions without tokens |
+| `scnet_job_queues` | Returns live regional Slurm queues |
+| `scnet_file_list` | Lists shared-storage files without modification |
+| `scnet_notebook_regions` | Lists Notebook-capable regions |
+| `scnet_notebook_resources` | Returns Notebook resource groups |
+| `scnet_notebook_list` | Lists redacted Notebook instances |
+| `scnet_notebook_show` | Returns one redacted Notebook instance |
 
 Check both accelerator and CPU-only job generation. Review the output for the selected partition, memory, and GRES rules.
 
@@ -51,6 +59,9 @@ Check both accelerator and CPU-only job generation. Review the output for the se
 ## 6. Scheduler-consuming checks
 
 `scnet_run_compute_probe` and refresh operations with compute probing submit Slurm jobs. Confirm the target cluster, account policy, accelerator count, CPU count, and time limit before execution.
+
+Notebook lifecycle mutations are intentionally not exposed as deterministic DSH tools in this
+release. Test them only through the Skill CLI and start with `--dry-run`.
 
 ## Cleanup
 

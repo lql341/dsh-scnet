@@ -2,7 +2,9 @@
 
 [English](./README.md) | 简体中文
 
-<p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）集群：配 SSH、生成 CPU/DCU Slurm 作业、探测/刷新集群、运行计算节点探针、排查失败，附海光 DCU/DTK 知识和英文快速指南。</p>
+<p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）：配置 SSH、管理 Slurm 作业、查询 OpenAPI 区域和文件、检查 Notebook 资源与实例，并保留海光 DCU/DTK 诊断能力。</p>
+
+当前版本：**0.5.0**
 
 > 本项目是独立维护的社区项目，与 DeepSeek Harness 兼容，但不是 DeepSeek 官方产品，也不表示 DeepSeek 对本项目提供背书、合作或授权。
 
@@ -48,6 +50,14 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 | scnet_probe_cluster | 探测新集群并生成 profile |
 | scnet_refresh_cluster | 动态刷新已有集群的规则缓存 |
 | scnet_run_compute_probe | 在计算节点运行最小能力探针 |
+| scnet_status | 只读查看 backend、SSH profile 和 OpenAPI 配置 |
+| scnet_openapi_regions | 列出授权 OpenAPI 区域，不暴露 token |
+| scnet_job_queues | 查询区域 Slurm 队列和实时空闲资源 |
+| scnet_file_list | 通过通用文件 API 列出共享存储 |
+| scnet_notebook_regions | 列出支持 Notebook 的区域 |
+| scnet_notebook_resources | 查询 Notebook CPU/GPU/DCU 资源 |
+| scnet_notebook_list | 列出 Notebook 实例并脱敏敏感字段 |
+| scnet_notebook_show | 查询一个脱敏后的 Notebook 实例详情 |
 
 ## 文档
 
@@ -68,6 +78,8 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 │   │   ├── wuzhshell.conf
 │   │   └── xianshell.conf
 │   ├── scripts/
+│   │   ├── scnet_backends/
+│   │   └── scnet_sdk/
 │   └── references/
 ├── sync.sh               # 从 canonical 仓库同步
 ├── README.md             # 英文默认说明
@@ -96,6 +108,8 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 - `scnet_generate_job` 生成的 `.slurm` 可能含本机用户名，`.gitignore` 已排除。
 - SSH 接入端点仅使用平台面向用户公开提供的信息，由 canonical 仓库维护。
 - `scnet_refresh_cluster` / `scnet_run_compute_probe` 会 SSH 到远端并可能提交作业；运行前确认集群和副作用。
+- 新增 OpenAPI 和 Notebook DSH 工具均为只读；Notebook 生命周期变更仍通过 Skill CLI 的确认流程执行。
+- Notebook 密码和带凭据的 URL 查询参数默认脱敏。
 - `clusters/.cache/` 是本机动态探测缓存，`.gitignore` 已排除，不应提交。
 
 ## License
@@ -105,3 +119,8 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 再发布本项目或其重要组成部分时，应保留版权声明和 MIT 许可声明。本项目按“现状”提供，不对适销性、特定用途适用性或不侵权作任何明示或默示保证；使用者应自行评估 DSH bundle、skill 说明、集群配置、脚本和生成结果在其环境中的适用性与风险。
 
 项目命名与归属声明遵循 [DeepSeek Harness 品牌素材使用规范](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.1.0-rc.8/BRAND_GUIDELINES.zh.md)。
+
+## 版本管理
+
+npm package 版本与 `skills/scnet-hpc/VERSION` 保持一致，并与源 Skill 使用同一套 SemVer
+发布版本。

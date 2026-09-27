@@ -58,5 +58,15 @@ DEEPSEEK_API_KEY: sk-你的key
 | 5 | 用 scnet_probe_cluster 探测集群 | 需要真实集群，会 SSH 到远端 | 中 |
 | 6 | 用 scnet_refresh_cluster dry_run=true 刷新规则 | 输出即将写入的缓存，不落盘 | 中（会 SSH） |
 | 7 | 用 scnet_run_compute_probe 跑计算节点探针 | 返回 PROBE_ 结果 | 高（提交作业并等待） |
+| 8 | 用 scnet_status 查看当前配置 | 返回脱敏配置 | 只读 |
+| 9 | 用 scnet_openapi_regions 查看授权区域 | 返回区域且不含 token | 只读 |
+| 10 | 用 scnet_job_queues 查看昆山队列 | 返回实时队列和空闲资源 | 只读 |
+| 11 | 用 scnet_file_list 查看默认目录 | 返回共享存储文件 | 只读 |
+| 12 | 用 scnet_notebook_regions 查看区域 | 返回 Notebook 可用区域 | 只读 |
+| 13 | 用 scnet_notebook_resources 查看昆山资源 | 返回 CPU/GPU/DCU 资源 | 只读 |
+| 14 | 用 scnet_notebook_list 查看实例 | 返回脱敏实例列表 | 只读 |
 
 第 4 至 7 步只有在你有私钥和目标集群时才测，测前确认副作用。
+
+Notebook 创建、启动、停止和释放没有作为 DSH deterministic tool 暴露。此类操作通过
+Skill CLI 执行，并先使用 `--dry-run`。
