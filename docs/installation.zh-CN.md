@@ -1,6 +1,7 @@
 # 安装 DSH-SCNet
 
-DSH-SCNet（npm 包名：`dsh-scnet`） 是一个 DeepSeek Harness（DSH）bundle 插件，把国产超算集群使用规范打包成 skill 和 7 个工具。
+DSH-SCNet（npm 包名：`dsh-scnet`）是一个 DeepSeek Harness（DSH）bundle 插件，把
+SCNet 使用规范、SSH/Slurm 工具、OpenAPI 只读资源工具和 Notebook 资源工具打包到一起。
 
 ## 前置条件
 
