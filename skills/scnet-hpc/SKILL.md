@@ -10,7 +10,8 @@ OpenAPI is the structured control plane. Never silently switch backends.
 
 ## First use and selection
 
-- New machine: run `scripts/setup.sh` (Bash, dependency-light).
+- New or existing machine: run `scripts/setup.sh` (Bash, dependency-light) to add/rotate a
+  profile; it can be run repeatedly.
 - Advanced OpenAPI discovery: `python3 scripts/scnet.py setup`.
 - Read-only preflight: `python3 scripts/scnet.py doctor`.
 - Backend precedence: `--backend`, `SCNET_HPC_BACKEND`, saved setup choice, profile
@@ -19,6 +20,8 @@ OpenAPI is the structured control plane. Never silently switch backends.
   `clusters/.cache/<cluster>.auto.conf` as optional, time-sensitive SSH probe data.
 - With multiple profiles, require an explicit cluster before access changes, installation,
   job generation, or submission. Query the selected backend for live queues, limits, and state.
+- SSH setup is profile-scoped; record usernames and key expiry metadata per profile. OpenAPI
+  credentials are platform-scoped and discover all authorized regions/schedulers automatically.
 
 Read [references/backends.md](references/backends.md) for backend selection and extension.
 Read [references/openapi.md](references/openapi.md) for OpenAPI credentials and limits.

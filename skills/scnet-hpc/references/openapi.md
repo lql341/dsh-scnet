@@ -28,7 +28,10 @@ export SCNET_OPENAPI_SECRET_KEY="<secret-key>"
 ```
 
 The client signs the canonical AK/timestamp/user JSON with HMAC-SHA256 and obtains a fresh
-per-region token for each invocation. It does not persist tokens.
+per-region token for each invocation. It does not persist tokens. The setup panel can store the
+platform credential set in macOS Keychain or Linux Secret Service; otherwise use environment
+variables. Region IDs, region users, schedulers, and home paths are discovered and cached as
+non-secret metadata.
 
 For an externally managed token:
 

@@ -17,6 +17,7 @@ from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .base import Backend, BackendError, require_option
+from scnet_credentials import load_openapi_credentials
 
 
 STATUS_MAP = {
@@ -175,9 +176,16 @@ class OpenAPIBackend(Backend):
                 }
             ]
 
-        user = self._env("SCNET_OPENAPI_USER")
-        access_key = self._env("SCNET_OPENAPI_ACCESS_KEY")
-        secret_key = self._env("SCNET_OPENAPI_SECRET_KEY")
+        credentials, _ = load_openapi_credentials()
+        user = self._env("SCNET_OPENAPI_USER") or (
+            credentials.get("user") if credentials else None
+        )
+        access_key = self._env("SCNET_OPENAPI_ACCESS_KEY") or (
+            credentials.get("access_key") if credentials else None
+        )
+        secret_key = self._env("SCNET_OPENAPI_SECRET_KEY") or (
+            credentials.get("secret_key") if credentials else None
+        )
         missing = [
             name
             for name, value in (
@@ -189,7 +197,8 @@ class OpenAPIBackend(Backend):
         ]
         if missing:
             raise BackendError(
-                "OpenAPI credentials are not configured; set " + ", ".join(missing)
+                "OpenAPI credentials are not configured; run setup or set "
+                + ", ".join(missing)
             )
         timestamp = str(int(time.time()))
         signature = canonical_signature(access_key, timestamp, user, secret_key)
@@ -331,6 +340,49 @@ class OpenAPIBackend(Backend):
             "scheduler_id": scheduler_id,
             "username": username,
         }
+
+    def discover_all_region_contexts(self) -> list[dict[str, Any]]:
+        """Resolve every authorized region without requiring IDs from the user."""
+        contexts: list[dict[str, Any]] = []
+        center_url = self._env(
+            "SCNET_OPENAPI_CENTER_URL",
+            "https://www.scnet.cn/ac/openapi/v2/center",
+        )
+        for region in self._regions():
+            region_id = str(region.get("clusterId", ""))
+            token = region.get("token")
+            if region_id == "0" or not token:
+                continue
+            center = self._json_request("GET", center_url, token=str(token))
+            if not isinstance(center, dict):
+                continue
+            hpc_url = self._enabled_url(center, "hpcUrls")
+            schedulers = self._json_request(
+                "GET",
+                service_endpoint(hpc_url, "hpc", "/openapi/v2/cluster"),
+                token=str(token),
+            )
+            if not isinstance(schedulers, list):
+                schedulers = []
+            user_info = center.get("clusterUserInfo") or {}
+            contexts.append(
+                {
+                    "region_id": region_id,
+                    "name": region.get("clusterName") or center.get("name"),
+                    "username": user_info.get("userName"),
+                    "home_path": user_info.get("homePath"),
+                    "schedulers": [
+                        {
+                            "id": str(item.get("id", "")),
+                            "name": item.get("text"),
+                            "type": item.get("JobManagerType"),
+                        }
+                        for item in schedulers
+                        if isinstance(item, dict)
+                    ],
+                }
+            )
+        return contexts
 
     def op_clusters(self, options: Mapping[str, Any]) -> Any:
         regions = self._regions()

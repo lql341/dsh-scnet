@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SCNet HPC first-use configuration panel.
+# SCNet HPC configuration and credential-rotation panel.
 #
 # This is the dependency-light entrypoint for new machines. Advanced OpenAPI
 # discovery remains available through: python3 scripts/scnet.py setup
@@ -79,19 +79,6 @@ ask() {
     printf '%s' "${answer:-$default}"
 }
 
-yes_no() {
-    local prompt="$1"
-    local default="${2:-yes}"
-    local hint="Y/n"
-    [ "$default" = no ] && hint="y/N"
-    local answer
-    printf '%s [%s]: ' "$prompt" "$hint" >&2
-    IFS= read -r answer
-    answer=$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')
-    [ -z "$answer" ] && [ "$default" = yes ] && return 0
-    [ "$answer" = y ] || [ "$answer" = yes ]
-}
-
 choose() {
     local prompt="$1"
     shift
@@ -108,13 +95,6 @@ choose() {
         || die "选择超出范围"
     choice="${choices[$((selected - 1))]}"
     printf '%s' "$choice"
-}
-
-validate_scalar() {
-    local name="$1"
-    local value="$2"
-    [[ "$value" != *$'\n'* && "$value" != *$'\r'* && "$value" != *'"'* ]] \
-        || die "$name 包含不安全字符"
 }
 
 validate_identifier() {
@@ -146,34 +126,133 @@ write_config() {
         json_string "$CLUSTER"
         printf ',\n  "default_backend": '
         json_string "$DEFAULT_BACKEND"
-        if [ -n "$SSH_USER" ]; then
-            printf ',\n  "ssh": {"username": '
-            json_string "$SSH_USER"
-            printf '}'
-        fi
-        if [ -n "$OPENAPI_REGION" ]; then
-            printf ',\n  "openapi": {"region_id": '
-            json_string "$OPENAPI_REGION"
-            if [ -n "$OPENAPI_SCHEDULER" ]; then
-                printf ', "scheduler_id": '
-                json_string "$OPENAPI_SCHEDULER"
-            fi
-            if [ -n "$OPENAPI_USER" ]; then
-                printf ', "username": '
-                json_string "$OPENAPI_USER"
-            fi
-            printf '}'
-        fi
         printf '\n}\n'
     } >"$temporary"
     mv "$temporary" "$config_path"
     printf '%s\n' "$config_path"
 }
 
+write_ssh_profile() {
+    [ -n "$SSH_USER" ] || return 0
+    local config_root="${XDG_CONFIG_HOME:-$HOME/.config}/scnet-hpc"
+    local ssh_root="$config_root/ssh"
+    local profile_path="$ssh_root/$CLUSTER.json"
+    local expiry=""
+    local key_base=""
+    local installed_key="$HOME/.ssh/id_rsa_$CLUSTER_ID"
+    local fingerprint=""
+    local updated_at=""
+    local existing_key_path=""
+    local existing_source=""
+    local existing_expiry=""
+    local existing_fingerprint=""
+    local existing_updated=""
+    mkdir -p "$ssh_root"
+    chmod 700 "$ssh_root"
+    existing_key_path=$(json_string_value "$profile_path" key_path)
+    existing_source=$(json_string_value "$profile_path" key_source_name)
+    existing_expiry=$(json_string_value "$profile_path" key_expires_at)
+    existing_fingerprint=$(json_string_value "$profile_path" key_fingerprint)
+    existing_updated=$(json_string_value "$profile_path" updated_at)
+    if [ -n "$SSH_KEY" ]; then
+        key_base=$(basename "$SSH_KEY")
+        expiry=$(printf '%s' "$key_base" | sed -nE \
+            's/.*RsaKeyExpireTime[_-]([0-9]{4}-[0-9]{2}-[0-9]{2}).*/\1/p')
+        updated_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+        if [ -f "$installed_key" ]; then
+            fingerprint=$(ssh-keygen -lf "$installed_key" 2>/dev/null \
+                | awk '{print $2; exit}')
+        fi
+    else
+        installed_key="$existing_key_path"
+        key_base="$existing_source"
+        expiry="$existing_expiry"
+        fingerprint="$existing_fingerprint"
+        updated_at="$existing_updated"
+    fi
+    local temporary
+    temporary=$(mktemp "$ssh_root/.$CLUSTER.XXXXXX")
+    chmod 600 "$temporary"
+    {
+        printf '{\n  "username": '
+        json_string "$SSH_USER"
+        if [ -n "$installed_key" ]; then
+            printf ',\n  "key_path": '
+            json_string "$installed_key"
+        fi
+        if [ -n "$key_base" ]; then
+            printf ',\n  "key_source_name": '
+            json_string "$key_base"
+        fi
+        if [ -n "$updated_at" ]; then
+            printf ',\n  "updated_at": '
+            json_string "$updated_at"
+        fi
+        if [ -n "$expiry" ]; then
+            printf ',\n  "key_expires_at": '
+            json_string "$expiry"
+        fi
+        if [ -n "$fingerprint" ]; then
+            printf ',\n  "key_fingerprint": '
+            json_string "$fingerprint"
+        fi
+        printf '\n}\n'
+    } >"$temporary"
+    mv "$temporary" "$profile_path"
+}
+
+json_string_value() {
+    local path="$1"
+    local key="$2"
+    [ -f "$path" ] || return 0
+    sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\\1/p" \
+        "$path" | head -1
+}
+
+detect_ssh_user() {
+    local key_path="${1:-}"
+    local config_root="${XDG_CONFIG_HOME:-$HOME/.config}/scnet-hpc"
+    local saved
+    saved=$(json_string_value "$config_root/ssh/$CLUSTER.json" username)
+    [ -n "$saved" ] && { printf '%s' "$saved"; return; }
+
+    if [ -n "$key_path" ] && [ -n "${KEY_NAME_MARKER:-}" ] \
+        && [[ "$KEY_NAME_MARKER" != *"<"* ]]; then
+        local base
+        base=$(basename "$key_path")
+        case "$base" in
+            *"$KEY_NAME_MARKER"*)
+                printf '%s' "${base%%"$KEY_NAME_MARKER"*}"
+                return
+                ;;
+        esac
+    fi
+    if [ -n "$key_path" ] && [ -n "${SSH_HOST:-}" ]; then
+        local host_marker="_${SSH_HOST}_"
+        local base
+        base=$(basename "$key_path")
+        case "$base" in
+            *"$host_marker"*)
+                printf '%s' "${base%%"$host_marker"*}"
+                return
+                ;;
+        esac
+    fi
+
+    local resolved_host resolved_user
+    resolved_host=$(ssh -G "$CLUSTER_ID" 2>/dev/null \
+        | awk '/^hostname /{print $2; exit}')
+    resolved_user=$(ssh -G "$CLUSTER_ID" 2>/dev/null \
+        | awk '/^user /{print $2; exit}')
+    if [ "$resolved_host" = "${SSH_HOST:-}" ]; then
+        printf '%s' "$resolved_user"
+    fi
+}
+
 require_tty
 
-printf '\nSCNet HPC 首次配置面板（Bash）\n' >&2
-printf '================================\n' >&2
+printf '\nSCNet HPC 配置/维护面板（Bash）\n' >&2
+printf '==================================\n' >&2
 printf '此面板只保存非敏感选择；AK/SK/token 不会写入配置文件。\n\n' >&2
 
 available=$(list_clusters)
@@ -207,7 +286,9 @@ case "$BACKEND" in
 esac
 
 if [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; then
+    export SCNET_HPC_LIVE_NODE_COUNT=no
     load_cluster "$CLUSTER"
+    unset SCNET_HPC_LIVE_NODE_COUNT
 else
     profile_path="$CLUSTER_DIR/$CLUSTER.conf"
     [ -f "$profile_path" ] || die "找不到 profile: $profile_path"
@@ -221,18 +302,17 @@ if [ "$BACKEND" = both ]; then
     DEFAULT_BACKEND=$(choose "选择默认 backend：" "ssh" "openapi")
 fi
 
-OPENAPI_REGION=""
-OPENAPI_SCHEDULER=""
-OPENAPI_USER=""
-
 if [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; then
-    SSH_USER="${SSH_USER:-$(ask "远端用户名")}"
-    validate_identifier "远端用户名" "$SSH_USER"
-    [ -n "$SSH_USER" ] || die "远端用户名不能为空"
     if [ "$SKIP_CONNECT" = no ]; then
         SSH_KEY="${SSH_KEY:-$(ask "私钥文件路径")}"
         SSH_KEY="${SSH_KEY/#\~/$HOME}"
         [ -f "$SSH_KEY" ] || die "找不到私钥文件: $SSH_KEY"
+    fi
+    detected_user=$(detect_ssh_user "$SSH_KEY")
+    SSH_USER="${SSH_USER:-$(ask "远端用户名（已自动探测，可直接回车）" "$detected_user")}"
+    validate_identifier "远端用户名" "$SSH_USER"
+    [ -n "$SSH_USER" ] || die "无法自动探测 SSH 用户名，请手工输入"
+    if [ "$SKIP_CONNECT" = no ]; then
         "$SCRIPT_DIR/setup-ssh.sh" --cluster "$CLUSTER" "$SSH_KEY" "$SSH_USER"
     else
         printf '已跳过 SSH 私钥安装和连接测试。\n' >&2
@@ -240,21 +320,18 @@ if [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; then
 fi
 
 if [ "$BACKEND" = openapi ] || [ "$BACKEND" = both ]; then
-    OPENAPI_REGION="${OPENAPI_REGION:-$(ask "OpenAPI 区域 ID")}"
-    OPENAPI_SCHEDULER="${OPENAPI_SCHEDULER:-$(ask "调度器 ID（未知可留空）")}"
-    OPENAPI_USER="${OPENAPI_USER:-$(ask "区域用户名（未知可留空）")}"
-    validate_scalar "OpenAPI 区域 ID" "$OPENAPI_REGION"
-    validate_scalar "OpenAPI 调度器 ID" "$OPENAPI_SCHEDULER"
-    validate_identifier "OpenAPI 区域 ID" "$OPENAPI_REGION"
-    [ -z "$OPENAPI_SCHEDULER" ] || validate_identifier "OpenAPI 调度器 ID" "$OPENAPI_SCHEDULER"
-    [ -z "$OPENAPI_USER" ] || validate_identifier "OpenAPI 用户名" "$OPENAPI_USER"
-    [ -n "$OPENAPI_REGION" ] || die "OpenAPI 区域 ID 不能为空"
-    printf '%s\n' \
-        "OpenAPI 选择已保存，但 Bash 面板不会验证凭据。" \
-        "请通过环境变量或 Python 面板验证：" \
-        "  python3 scripts/scnet.py --backend openapi doctor" >&2
+    if command -v python3 >/dev/null 2>&1; then
+        printf '%s\n' \
+            "OpenAPI 使用一组平台 AK/SK 自动发现全部授权区域。" >&2
+        python3 "$SCRIPT_DIR/scnet.py" setup --mode openapi
+    else
+        printf '%s\n' \
+            "OpenAPI backend 需要 Python 3；SSH 配置不受影响。" \
+            "安装 Python 3 后运行：python3 scripts/scnet.py setup --mode openapi" >&2
+    fi
 fi
 
+write_ssh_profile
 config_path=$(write_config)
 printf '\n已保存配置：%s\n' "$config_path" >&2
 printf '下一步：%s/scripts/scnet.py doctor\n' "$REPO_ROOT" >&2

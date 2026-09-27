@@ -51,7 +51,11 @@ On a new computer, start with the dependency-light Bash panel:
 python3 scripts/scnet.py doctor
 ```
 
-Use `./scripts/setup.sh --skip-connect` when only local selections should be saved. Developers
+Use `./scripts/setup.sh --skip-connect` when only local selections should be saved. The Bash
+panel can be rerun to update a profile's SSH user/key metadata. OpenAPI uses one platform
+credential set and discovers regions, users, schedulers, and home paths automatically; no region
+ID is required during setup.
+Developers
 can use `python3 scripts/scnet.py setup` for live OpenAPI region discovery. Both panels store no
 secrets; provide OpenAPI credentials through a host credential manager or environment injection.
 
