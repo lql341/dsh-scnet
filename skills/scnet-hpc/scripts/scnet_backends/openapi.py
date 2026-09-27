@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import mimetypes
-import os
 import re
-import time
 import uuid
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from .base import Backend, BackendError, require_option
-from scnet_credentials import load_openapi_credentials
+from scnet_sdk.client import (
+    SCNetClient,
+    canonical_signature,
+    service_endpoint,
+)
 
 
 STATUS_MAP = {
@@ -41,30 +41,6 @@ def _bounded_int(options: Mapping[str, Any], name: str, minimum: int) -> int:
     if value < minimum:
         raise BackendError(f"{name} must be >= {minimum}")
     return value
-
-
-def canonical_signature(access_key: str, timestamp: str, user: str, secret_key: str) -> str:
-    message = json.dumps(
-        {"accessKey": access_key, "timestamp": timestamp, "user": user},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    return hmac.new(
-        secret_key.encode("utf-8"),
-        message.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-
-
-def service_endpoint(base_url: str, service: str, suffix: str) -> str:
-    """Join endpoints whether the discovered URL already ends in /hpc or /efile."""
-    split = urlsplit(base_url.rstrip("/"))
-    path = split.path.rstrip("/")
-    service_part = f"/{service}"
-    if not path.endswith(service_part):
-        path += service_part
-    path += "/" + suffix.lstrip("/")
-    return urlunsplit((split.scheme, split.netloc, path, "", ""))
 
 
 def normalize_job(item: Mapping[str, Any]) -> dict[str, Any]:
@@ -110,9 +86,12 @@ class OpenAPIBackend(Backend):
         }
     )
 
+    def __init__(self, context):
+        super().__init__(context)
+        self.client = SCNetClient(context)
+
     def _env(self, name: str, default: str | None = None) -> str | None:
-        value = os.environ.get(name)
-        return value if value not in (None, "") else default
+        return self.client.env(name, default)
 
     def _json_request(
         self,
@@ -124,156 +103,40 @@ class OpenAPIBackend(Backend):
         form: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> Any:
-        request_headers = {
-            "Accept": "application/json",
-            "User-Agent": "scnet-hpc/1",
-        }
-        if headers:
-            request_headers.update(headers)
-        if token:
-            request_headers["token"] = token
-        data: bytes | None = None
-        if json_body is not None:
-            data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
-            request_headers["Content-Type"] = "application/json"
-        elif form is not None:
-            data = urlencode(form).encode("utf-8")
-            request_headers["Content-Type"] = "application/x-www-form-urlencoded"
-        request = Request(url, data=data, method=method, headers=request_headers)
-        try:
-            with urlopen(request, timeout=self.context.timeout) as response:
-                raw = response.read()
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")
-            raise BackendError(f"HTTP {exc.code} from SCNet OpenAPI: {detail[:500]}") from exc
-        except (URLError, TimeoutError, OSError) as exc:
-            raise BackendError(f"SCNet OpenAPI request failed: {exc}") from exc
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise BackendError("SCNet OpenAPI returned a non-JSON response") from exc
-        if not isinstance(payload, dict):
-            raise BackendError("SCNet OpenAPI response must be a JSON object")
-        code = str(payload.get("code", ""))
-        if code != "0":
-            message = payload.get("msg") or "unknown OpenAPI error"
-            raise BackendError(f"SCNet OpenAPI error {code}: {message}")
-        return payload.get("data")
+        return self.client.request(
+            method,
+            url,
+            token=token,
+            json_body=json_body,
+            form=form,
+            headers=headers,
+        )
 
     def _regions(self) -> list[dict[str, Any]]:
-        direct_token = self._env("SCNET_OPENAPI_TOKEN")
-        if direct_token:
-            region_id = (
-                self._env("SCNET_OPENAPI_REGION_ID")
-                or self.context.profile.get("OPENAPI_REGION_ID")
-                or ""
-            )
-            return [
-                {
-                    "clusterId": region_id,
-                    "clusterName": self._env("SCNET_OPENAPI_REGION_NAME", "configured"),
-                    "token": direct_token,
-                }
-            ]
-
-        credentials, _ = load_openapi_credentials()
-        user = self._env("SCNET_OPENAPI_USER") or (
-            credentials.get("user") if credentials else None
-        )
-        access_key = self._env("SCNET_OPENAPI_ACCESS_KEY") or (
-            credentials.get("access_key") if credentials else None
-        )
-        secret_key = self._env("SCNET_OPENAPI_SECRET_KEY") or (
-            credentials.get("secret_key") if credentials else None
-        )
-        missing = [
-            name
-            for name, value in (
-                ("SCNET_OPENAPI_USER", user),
-                ("SCNET_OPENAPI_ACCESS_KEY", access_key),
-                ("SCNET_OPENAPI_SECRET_KEY", secret_key),
-            )
-            if not value
-        ]
-        if missing:
-            raise BackendError(
-                "OpenAPI credentials are not configured; run setup or set "
-                + ", ".join(missing)
-            )
-        timestamp = str(int(time.time()))
-        signature = canonical_signature(access_key, timestamp, user, secret_key)
-        auth_base = self._env("SCNET_OPENAPI_AUTH_BASE", "https://api.scnet.cn")
-        url = auth_base.rstrip("/") + "/api/user/v3/tokens"
-        data = self._json_request(
-            "POST",
-            url,
-            headers={
-                "user": user,
-                "accessKey": access_key,
-                "signature": signature,
-                "timestamp": timestamp,
-            },
-        )
-        if not isinstance(data, list):
-            raise BackendError("token endpoint returned an unexpected data shape")
-        return [item for item in data if isinstance(item, dict)]
+        return self.client.regions()
 
     def _select_region(
         self, options: Mapping[str, Any]
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        regions = self._regions()
         requested = (
             options.get("region")
             or self.context.profile.get("OPENAPI_REGION_ID")
             or self._env("SCNET_OPENAPI_REGION_ID")
         )
-        usable = [
-            item
-            for item in regions
-            if str(item.get("clusterId", "")) != "0" and item.get("token")
-        ]
-        if requested:
-            for item in usable:
-                if str(item.get("clusterId")) == str(requested) or item.get(
-                    "clusterName"
-                ) == requested:
-                    return item, regions
-            raise BackendError(f"OpenAPI region {requested!r} is not available")
-        if len(usable) == 1:
-            return usable[0], regions
-        names = ", ".join(
-            f"{item.get('clusterName')}({item.get('clusterId')})" for item in usable
-        )
-        raise BackendError(
-            "multiple OpenAPI regions are available; select one with --region: " + names
-        )
+        return self.client.select_region(str(requested) if requested else None)
 
     def _center(
         self, options: Mapping[str, Any]
     ) -> tuple[dict[str, Any], str, dict[str, Any]]:
-        region, _ = self._select_region(options)
-        token = str(region["token"])
-        center_url = self._env(
-            "SCNET_OPENAPI_CENTER_URL",
-            "https://www.scnet.cn/ac/openapi/v2/center",
+        requested = (
+            options.get("region")
+            or self.context.profile.get("OPENAPI_REGION_ID")
+            or self._env("SCNET_OPENAPI_REGION_ID")
         )
-        data = self._json_request("GET", center_url, token=token)
-        if not isinstance(data, dict):
-            raise BackendError("center endpoint returned an unexpected data shape")
-        return data, token, region
+        return self.client.center(str(requested) if requested else None)
 
-    @staticmethod
-    def _enabled_url(center: Mapping[str, Any], field: str) -> str:
-        values = center.get(field)
-        if not isinstance(values, list):
-            raise BackendError(f"center response has no {field}")
-        for item in values:
-            if not isinstance(item, dict):
-                continue
-            enabled = str(item.get("enable", "true")).lower() == "true"
-            if enabled and item.get("url"):
-                return str(item["url"])
-        raise BackendError(f"center response has no enabled URL in {field}")
+    def _enabled_url(self, center: Mapping[str, Any], field: str) -> str:
+        return self.client.enabled_url(center, field)
 
     def _hpc_context(
         self, options: Mapping[str, Any]
@@ -356,7 +219,12 @@ class OpenAPIBackend(Backend):
             center = self._json_request("GET", center_url, token=str(token))
             if not isinstance(center, dict):
                 continue
-            hpc_url = self._enabled_url(center, "hpcUrls")
+            try:
+                hpc_url = self._enabled_url(center, "hpcUrls")
+            except BackendError:
+                # An account can be authorized for platform/model regions that do not
+                # expose an HPC service. They are not job-submission targets.
+                continue
             schedulers = self._json_request(
                 "GET",
                 service_endpoint(hpc_url, "hpc", "/openapi/v2/cluster"),

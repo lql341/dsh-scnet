@@ -19,6 +19,16 @@ compact result is insufficient.
 
 ## Credentials
 
+Obtain AK/SK from the SCNet website:
+
+1. Sign in to SCNet.
+2. Open **Personal Center / 个人中心**.
+3. Open **Access Control / 访问控制**.
+4. Generate and download the authorization file containing AccessKey and SecretKey.
+
+Official instructions:
+<https://www.scnet.cn/ac/openapi/doc/2.0/api/safecertification/get-user-tokens-aksk.html>
+
 Preferred environment variables:
 
 ```bash
@@ -32,6 +42,11 @@ per-region token for each invocation. It does not persist tokens. The setup pane
 platform credential set in macOS Keychain or Linux Secret Service; otherwise use environment
 variables. Region IDs, region users, schedulers, and home paths are discovered and cached as
 non-secret metadata.
+
+Interactive terminals support ↑/↓ plus Enter and direct numeric selection. Press Enter without
+typing a number to accept the current/default item. SecretKey input is intentionally invisible.
+This behavior is the same in macOS Terminal/iTerm2 and Ubuntu/Debian terminals.
+Ubuntu/Debian users can install `secret-tool` with `sudo apt install libsecret-tools`.
 
 For an externally managed token:
 

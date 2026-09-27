@@ -127,6 +127,42 @@ def save_ssh_profile(cluster: str, data: dict[str, Any]) -> Path:
     return _save_json_sidecar(ssh_profile_path(cluster), data)
 
 
+def reset_openapi_metadata() -> bool:
+    path = openapi_cache_path()
+    try:
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def reset_ssh_metadata(cluster: str) -> bool:
+    path = ssh_profile_path(cluster)
+    try:
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def reset_all_metadata() -> list[Path]:
+    removed: list[Path] = []
+    targets = [config_path(), openapi_cache_path()]
+    targets.extend(sorted((config_root() / "ssh").glob("*.json")))
+    for path in targets:
+        try:
+            path.unlink()
+            removed.append(path)
+        except FileNotFoundError:
+            pass
+    for directory in (config_root() / "ssh", config_root()):
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
+    return removed
+
+
 def redacted_config(data: dict[str, Any]) -> dict[str, Any]:
     """Return a safe-to-display copy; this config should contain no secrets anyway."""
     result = json.loads(json.dumps(data, ensure_ascii=False))

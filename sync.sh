@@ -30,18 +30,22 @@ mkdir -p "$DST"
 
 # Generate the DSH copy without the canonical repository installer.
 awk '!/^\| `scripts\/install\.sh` \|/' "$SRC/SKILL.md" > "$DST/SKILL.md"
+cp "$SRC/VERSION" "$DST/VERSION"
 rm -rf "$DST/clusters" "$DST/references" "$DST/scripts"
 cp -R "$SRC/clusters" "$DST/clusters"
 rm -rf "$DST/clusters/.cache"
 cp -R "$SRC/references" "$DST/references"
 
 mkdir -p "$DST/scripts"
-for f in _common.sh new-job.sh setup-ssh.sh probe-cluster.sh refresh-cluster.sh run-compute-probe.sh compute-probe.py setup.sh scnet.py scnet_config.py; do
+for f in _common.sh new-job.sh setup-ssh.sh probe-cluster.sh refresh-cluster.sh run-compute-probe.sh compute-probe.py setup.sh scnet.py scnet_config.py scnet_credentials.py scnet_version.py; do
   [ -f "$SRC/scripts/$f" ] && cp "$SRC/scripts/$f" "$DST/scripts/$f"
 done
 rm -rf "$DST/scripts/scnet_backends"
 cp -R "$SRC/scripts/scnet_backends" "$DST/scripts/scnet_backends"
+rm -rf "$DST/scripts/scnet_sdk"
+cp -R "$SRC/scripts/scnet_sdk" "$DST/scripts/scnet_sdk"
 chmod +x "$DST/scripts/"*.sh
+chmod +x "$DST/scripts/scnet.py"
 chmod +x "$DST/scripts/scnet.py"
 
 echo "已同步：$SRC -> $DST"

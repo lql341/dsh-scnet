@@ -2,7 +2,9 @@
 
 [简体中文](./README_CN.md)
 
-DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet) clusters. It packages the canonical [`scnet-hpc`](https://github.com/lql341/scnet-hpc) skill, profile-aware shell utilities, and seven deterministic tools for SSH setup, Slurm job generation, cluster discovery, and compute-node diagnostics.
+DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
+
+Current release: **0.5.0**
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.
 
@@ -40,6 +42,14 @@ See [Installation](./docs/installation.md) for npm, GitHub, and local-checkout w
 | `scnet_probe_cluster` | Produce an initial profile from read-only login-node probes |
 | `scnet_refresh_cluster` | Refresh time-sensitive profile fields; compute probing is opt-in |
 | `scnet_run_compute_probe` | Submit a minimal compute-node capability probe |
+| `scnet_status` | Read the saved backend, SSH profile, and OpenAPI configuration |
+| `scnet_openapi_regions` | List authorized OpenAPI regions without exposing tokens |
+| `scnet_job_queues` | Query regional Slurm queues and live resource availability |
+| `scnet_file_list` | List shared-storage files through the common file API |
+| `scnet_notebook_regions` | List Notebook-capable regions |
+| `scnet_notebook_resources` | Query Notebook CPU/GPU/DCU resources |
+| `scnet_notebook_list` | List Notebook instances with sensitive fields redacted |
+| `scnet_notebook_show` | Inspect one redacted Notebook instance |
 
 Packaged profiles currently cover Zhengzhou, Kunshan, Wuzhen, and Xi'an SCNet environments. Cluster specifications and scheduler policies remain profile-specific and should be verified against the target environment.
 
@@ -55,6 +65,8 @@ Packaged profiles currently cover Zhengzhou, Kunshan, Wuzhen, and Xi'an SCNet en
 │   ├── clusters/
 │   ├── references/
 │   └── scripts/
+│       ├── scnet_backends/
+│       └── scnet_sdk/
 ├── scripts/validate-package.mjs
 ├── docs/
 ├── sync.sh
@@ -87,6 +99,8 @@ See [Testing](./docs/testing.md) for local package installation and risk-ordered
 
 - The repository and npm package must not contain private keys, tokens, usernames, private endpoints, or local probe caches.
 - SSH configuration, remote probes, and Slurm submission are state-changing operations and require an explicit target and user authorization.
+- OpenAPI and Notebook DSH tools are read-only; lifecycle mutations remain behind the Skill CLI confirmation flow.
+- Notebook passwords and credential-bearing URL queries are redacted by default.
 - Generated Slurm files may include local usernames and are ignored by Git.
 - Accelerator compatibility claims require evidence from the target compute node.
 
@@ -95,6 +109,11 @@ See [Testing](./docs/testing.md) for local package installation and risk-ordered
 The project uses the abbreviated `DSH` ecosystem identifier in its name. References to “DeepSeek Harness” are descriptive compatibility statements only. No official logo or other DeepSeek brand asset is distributed by this package.
 
 The naming and attribution policy follows the [DeepSeek Harness brand guidelines](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.1.0-rc.8/BRAND_GUIDELINES.md).
+
+## Versioning
+
+The npm package version matches `skills/scnet-hpc/VERSION` and follows the same SemVer release
+train as the source Skill.
 
 ## License
 
