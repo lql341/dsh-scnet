@@ -1,6 +1,6 @@
 {
   "name": "dsh-scnet",
-  "version": "0.5.0",
+  "version": "0.5.0-rc.1",
   "description": "Community DeepSeek Harness bundle for SCNet SSH and OpenAPI jobs, files, Notebook resources, Slurm diagnostics, and Hygon DCU/DTK guidance.",
   "type": "module",
   "main": "./index.mjs",
@@ -9,8 +9,16 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
-  "dependencies": {
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.8"
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.8 || ^0.1.5-rc.3"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-tools": "^0.1.5-rc.3"
   },
   "repository": {
     "type": "git",

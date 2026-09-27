@@ -43,6 +43,11 @@ jobs:
             echo "v${RELEASE_VERSION} already exists" >&2
             exit 1
           fi
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            echo "NPM_TAG=next" >> "$GITHUB_ENV"
+          else
+            echo "NPM_TAG=latest" >> "$GITHUB_ENV"
+          fi
 
       - name: Install dependencies
         run: npm install --no-package-lock --ignore-scripts
@@ -70,7 +75,7 @@ jobs:
 
       - name: Publish to npm
         if: env.SHOULD_PUBLISH == 'true'
-        run: npm publish "$RELEASE_TARBALL" --access public
+        run: npm publish "$RELEASE_TARBALL" --access public --tag "$NPM_TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
