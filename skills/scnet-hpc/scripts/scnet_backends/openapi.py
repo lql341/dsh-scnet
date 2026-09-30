@@ -38,6 +38,7 @@ STATUS_MAP = {
     "statRQ": "REQUEUED",
 }
 WALLTIME_RE = re.compile(r"^(?:[0-9]+-)?[0-9]{1,3}:[0-9]{2}:[0-9]{2}$")
+SCNET_TIMEZONE = timezone(timedelta(hours=8))
 
 
 def _bounded_int(options: Mapping[str, Any], name: str, minimum: int) -> int:
@@ -62,19 +63,23 @@ def normalize_job(item: Mapping[str, Any]) -> dict[str, Any]:
         "name": item.get("jobName") or item.get("name"),
         "state": STATUS_MAP.get(str(raw_state), raw_state),
         "raw_state": raw_state,
-        "queue": item.get("queue"),
-        "user": item.get("user"),
-        "nodes": item.get("nodeNumReq") or item.get("nodeUsed"),
-        "cpus": item.get("procNumReq") or item.get("procNumUsed"),
+        "queue": item.get("queue") or item.get("queueName"),
+        "user": item.get("user") or item.get("userName"),
+        "nodes": item.get("nodeNumReq") or item.get("nodeUsed") or item.get("nodeNum"),
+        "cpus": item.get("procNumReq") or item.get("procNumUsed") or item.get("nproc"),
         "gpus": item.get("gpuNumReq") or item.get("gpuNumUsed"),
         "dcus": item.get("dcuNumReq") or item.get("dcuNumUsed"),
-        "elapsed": item.get("jobRunTime"),
-        "submitted_at": item.get("jobSubmitTime"),
+        "elapsed": item.get("jobRunTime") or item.get("jobWalltimeUsed"),
+        "submitted_at": (
+            item.get("jobSubmitTime")
+            or item.get("jobQueueTime")
+            or item.get("queueTime")
+        ),
         "started_at": item.get("jobStartTime"),
-        "ended_at": item.get("jobEndTime"),
+        "ended_at": item.get("jobEndTime") or item.get("acctTime"),
         "exit_code": item.get("exitCode"),
         "reason": item.get("reason"),
-        "work_dir": item.get("workDir"),
+        "work_dir": item.get("workDir") or item.get("workdir"),
         "stdout": item.get("outputPath"),
         "stderr": item.get("errorPath"),
     }
@@ -371,16 +376,23 @@ class OpenAPIBackend(Backend):
                     result["raw"] = candidate
                 return result
 
-        history = self._history_job(
+        history_items, _, history_raw = self._history_jobs(
             hpc_url,
             token,
             scheduler_id,
-            job_id,
-            options,
+            job_id=job_id,
+            days=30,
+            limit=1,
         )
-        if not isinstance(history, dict) or not (
-            history.get("jobId") or history.get("job_id")
-        ):
+        history = next(
+            (
+                item
+                for item in history_items
+                if str(item.get("jobId") or item.get("job_id") or "") == job_id
+            ),
+            None,
+        )
+        if history is None:
             detail = "realtime and history endpoints returned no job record"
             if realtime_error:
                 detail += f" ({realtime_error})"
@@ -388,7 +400,10 @@ class OpenAPIBackend(Backend):
         result = normalize_job(history)
         result["source"] = "history"
         if options.get("raw"):
-            result["raw"] = history
+            result["raw"] = {
+                "item": history,
+                "response": history_raw,
+            }
         return result
 
     @staticmethod
@@ -405,25 +420,53 @@ class OpenAPIBackend(Backend):
             )
         )
 
-    def _history_job(
+    @staticmethod
+    def _job_items(data: Any) -> tuple[list[dict[str, Any]], int | None]:
+        if isinstance(data, dict):
+            items = data.get("items") or data.get("list") or data.get("rows") or []
+            total = data.get("total")
+        else:
+            items = data or []
+            total = None
+        if not isinstance(items, list):
+            raise BackendError("job list endpoint returned an unexpected data shape")
+        normalized_items = [item for item in items if isinstance(item, dict)]
+        return normalized_items, total
+
+    def _history_jobs(
         self,
         hpc_url: str,
         token: str,
         scheduler_id: str,
-        job_id: str,
-        options: Mapping[str, Any],
-    ) -> Any:
+        *,
+        job_id: str | None = None,
+        days: int = 30,
+        limit: int = 20,
+    ) -> tuple[list[dict[str, Any]], int | None, Any]:
         if not scheduler_id:
             raise BackendError("history lookup requires a scheduler id")
-        path = f"/openapi/v2/historyjobs/{quote(scheduler_id)}/{quote(job_id)}"
-        acct_time = str(options.get("acct_time") or "").strip()
-        if acct_time:
-            path += "?" + urlencode({"acctTime": acct_time})
-        return self._json_request(
+        end = datetime.now(SCNET_TIMEZONE)
+        start = end - timedelta(days=days)
+        params = {
+            "strClusterNameList": scheduler_id,
+            "timeType": "CUSTOM",
+            "isQueryByQueueTime": "false",
+            "start": 0,
+            "limit": limit,
+            "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+            "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        if job_id:
+            params["jobId"] = job_id
+        data = self._json_request(
             "GET",
-            service_endpoint(hpc_url, "hpc", path),
+            service_endpoint(hpc_url, "hpc", "/openapi/v2/historyjobs")
+            + "?"
+            + urlencode(params),
             token=token,
         )
+        items, total = self._job_items(data)
+        return items, total, data
 
     def op_jobs(self, options: Mapping[str, Any]) -> Any:
         hpc_url, token, scheduler_id, _, _ = self._hpc_context(options)
@@ -440,35 +483,23 @@ class OpenAPIBackend(Backend):
                 "start": 0,
                 "limit": limit,
             }
+            data = self._json_request(
+                "GET",
+                service_endpoint(hpc_url, "hpc", path) + "?" + urlencode(params),
+                token=token,
+            )
+            items, total = self._job_items(data)
         else:
             days = _bounded_int(options, "days", 1)
             if days > 90:
                 raise BackendError("days must be <= 90")
-            end = datetime.now(timezone.utc)
-            start = end - timedelta(days=days)
-            path = "/openapi/v2/historyjobs"
-            params = {
-                "strClusterNameList": scheduler_id,
-                "timeType": "CUSTOM",
-                "isQueryByQueueTime": "false",
-                "start": 0,
-                "limit": limit,
-                "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
-                "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
-            }
-        data = self._json_request(
-            "GET",
-            service_endpoint(hpc_url, "hpc", path) + "?" + urlencode(params),
-            token=token,
-        )
-        if isinstance(data, dict):
-            items = data.get("items") or data.get("list") or data.get("rows") or []
-            total = data.get("total")
-        else:
-            items = data or []
-            total = None
-        if not isinstance(items, list):
-            raise BackendError("job list endpoint returned an unexpected data shape")
+            items, total, data = self._history_jobs(
+                hpc_url,
+                token,
+                scheduler_id,
+                days=days,
+                limit=limit,
+            )
         result = [normalize_job(item) for item in items if isinstance(item, dict)]
         payload = {
             "scope": scope,

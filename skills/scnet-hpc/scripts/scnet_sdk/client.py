@@ -86,28 +86,39 @@ class SCNetClient:
     @classmethod
     def _write_token_cache(
         cls, fingerprint: str, regions: list[dict[str, Any]]
-    ) -> None:
+    ) -> bool:
         path, _ = cls._token_cache_paths()
-        path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
         temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        temporary.write_text(
-            json.dumps(
-                {
-                    "created_at": time.time(),
-                    "fingerprint": fingerprint,
-                    "regions": regions,
-                },
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
+        try:
+            path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+            temporary.write_text(
+                json.dumps(
+                    {
+                        "created_at": time.time(),
+                        "fingerprint": fingerprint,
+                        "regions": regions,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+            return True
+        except OSError:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+            return False
 
     @classmethod
     def _acquire_token_cache_lock(cls) -> Path | None:
         _, lock = cls._token_cache_paths()
-        lock.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        try:
+            lock.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        except OSError:
+            return None
         for _ in range(50):
             try:
                 fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -121,6 +132,8 @@ class SCNetClient:
                 except OSError:
                     pass
                 time.sleep(0.2)
+            except OSError:
+                return None
         return None
 
     @staticmethod
@@ -128,7 +141,7 @@ class SCNetClient:
         if lock is not None:
             try:
                 lock.unlink()
-            except FileNotFoundError:
+            except OSError:
                 pass
 
     def request(
@@ -257,7 +270,8 @@ class SCNetClient:
             self._regions_cache = [
                 item for item in data if isinstance(item, dict)
             ]
-            self._write_token_cache(fingerprint, self._regions_cache)
+            if lock is not None:
+                self._write_token_cache(fingerprint, self._regions_cache)
             return self._regions_cache
         finally:
             self._release_token_cache_lock(lock)
