@@ -101,6 +101,10 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 只改 canonical，本仓库跑 sync 更新；不要把 `skills/scnet-hpc/` 当手工维护目录。
 `sync.sh` 会自动排除 `scripts/install.sh` 和 `clusters/.cache/`，避免把安装脚本或本机动态缓存打进发布包。
 
+发布顺序也是从 canonical 向下游流转：先在 `scnet-hpc` 修改并发布 `VERSION`，其 CI
+再把 Skill 内容和版本同步到 `dsh-scnet` 与 `codex-scnet-hpc`。下游变更审核通过后，
+才能发布对应版本的 `dsh-scnet` npm 包。
+
 ## 隐私与安全
 
 - 仓库不含私钥、token、用户名、密钥指纹。
@@ -123,4 +127,5 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 ## 版本管理
 
 npm package 版本与 `skills/scnet-hpc/VERSION` 保持一致，并与源 Skill 使用同一套 SemVer
-发布版本。
+发布版本。`@deepseek-ai/dsh-tools` 是可选 peer dependency：运行时副本由 DSH 提供，
+`devDependencies` 只为本地校验提供同一版本，不能作为插件运行时的第二份副本。

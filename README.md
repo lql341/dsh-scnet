@@ -85,6 +85,10 @@ The `skills/scnet-hpc/` directory is generated from the canonical `scnet-hpc` re
 
 Do not maintain the generated directory independently. The sync excludes the canonical installer and local probe cache because neither belongs in the npm runtime package.
 
+Release order is canonical-to-downstream: update `scnet-hpc/VERSION` first; its CI then
+synchronizes the skill and version into `dsh-scnet` and `codex-scnet-hpc`. Publish the matching
+`dsh-scnet` npm package only after that downstream change is reviewed.
+
 ## Validation
 
 ```sh
@@ -113,7 +117,8 @@ The naming and attribution policy follows the [DeepSeek Harness brand guidelines
 ## Versioning
 
 The npm package version matches `skills/scnet-hpc/VERSION` and follows the same SemVer release
-train as the source Skill.
+train as the source Skill. `@deepseek-ai/dsh-tools` is an optional peer dependency: DSH supplies
+the runtime copy, while `devDependencies` provides the same host version for local validation only.
 
 ## License
 

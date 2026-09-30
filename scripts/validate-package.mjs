@@ -8,8 +8,15 @@ if (pkg.dsh.skills !== undefined) throw new Error("dsh.skills is not part of the
 if (pkg.dependencies?.["@deepseek-ai/dsh-tools"] !== undefined) {
   throw new Error("@deepseek-ai/dsh-tools must be a peer dependency so the Harness owns one tool runtime")
 }
-if (pkg.peerDependencies?.["@deepseek-ai/dsh-tools"] === undefined) {
+const toolPeer = pkg.peerDependencies?.["@deepseek-ai/dsh-tools"]
+if (toolPeer === undefined) {
   throw new Error("package.json must declare @deepseek-ai/dsh-tools as a peer dependency")
+}
+if (pkg.peerDependenciesMeta?.["@deepseek-ai/dsh-tools"]?.optional !== true) {
+  throw new Error("@deepseek-ai/dsh-tools must remain an optional peer owned by the Harness")
+}
+if (pkg.devDependencies?.["@deepseek-ai/dsh-tools"] !== toolPeer) {
+  throw new Error("devDependency @deepseek-ai/dsh-tools must use the same range as the peer dependency")
 }
 const skillVersion = (await readFile(new URL("../skills/scnet-hpc/VERSION", import.meta.url), "utf8")).trim()
 if (pkg.version !== skillVersion) throw new Error(`package version ${pkg.version} does not match Skill ${skillVersion}`)
