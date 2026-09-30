@@ -61,22 +61,22 @@ DEEPSEEK_API_KEY: sk-你的key
 | 8 | 用 scnet_status 查看当前配置 | 返回脱敏配置 | 只读 |
 | 9 | 用 scnet_openapi_regions 查看授权区域 | 返回区域且不含 token | 只读 |
 | 10 | 用 scnet_job_queues 查看昆山队列 | 返回实时队列和空闲资源 | 只读 |
-| 10a | 用 scnet_job_list 列出当前或历史作业 | 返回紧凑作业记录 | 只读 |
-| 10b | 用 scnet_limits 查询资源限制 | 返回用户和调度器限制 | 只读 |
-| 10a | 用 scnet_submit_job（dry_run=true）预览一次提交 | 返回将要发送的请求，不真正提交 | 只读（dry_run） |
-| 10b | 用 scnet_submit_job 提交一个 5 秒小作业 | 返回 job_id、作业目录与日志路径 | 高（会消耗配额） |
-| 10c | 用 scnet_job_show 查该 job_id | 返回状态与 stdout/stderr 路径 | 只读 |
-| 10d | 用 scnet_job_logs 读该作业日志 | 返回日志内容（同时验证 path 与 job_id+work_dir 两种模式结果一致） | 只读 |
-| 10e | 用 scnet_job_cancel 取消一个作业 | 建议先用 dry_run=true 预览 | 高（变更） |
-| 11 | 用 scnet_file_list 查看默认目录 | 返回共享存储文件 | 只读 |
-| 11a | 用 scnet_file_transfer 传输一个文件 | 默认不覆盖目标 | 有副作用 |
-| 12 | 用 scnet_notebook_regions 查看区域 | 返回 Notebook 可用区域 | 只读 |
-| 13 | 用 scnet_notebook_resources 查看昆山资源 | 返回 CPU/GPU/DCU 资源 | 只读 |
-| 14 | 用 scnet_notebook_list 查看实例 | 返回脱敏实例列表 | 只读 |
+| 11 | 用 scnet_job_list 列出当前或历史作业 | 返回紧凑作业记录 | 只读 |
+| 12 | 用 scnet_limits 查询资源限制 | 返回用户和调度器限制 | 只读 |
+| 13 | 用 scnet_submit_job（dry_run=true）预览一次提交 | 返回将要发送的请求，不真正提交 | 只读（dry_run） |
+| 14 | 用 scnet_submit_job 提交一个 5 秒小作业 | 返回 job_id、作业目录与日志路径 | 高（会消耗配额） |
+| 15 | 用 scnet_job_show 查该 job_id | 返回状态与 stdout/stderr 路径 | 只读 |
+| 16 | 用 scnet_job_logs 读该作业日志 | 返回日志内容（同时验证 path 与 job_id+work_dir 两种模式结果一致） | 只读 |
+| 17 | 用 scnet_job_cancel 取消一个作业 | 建议先用 dry_run=true 预览 | 高（变更） |
+| 18 | 用 scnet_file_list 查看默认目录 | 返回共享存储文件 | 只读 |
+| 19 | 用 scnet_file_transfer 传输一个文件 | 默认不覆盖目标 | 有副作用 |
+| 20 | 用 scnet_notebook_regions 查看区域 | 返回 Notebook 可用区域 | 只读 |
+| 21 | 用 scnet_notebook_resources 查看昆山资源 | 返回 CPU/GPU/DCU 资源 | 只读 |
+| 22 | 用 scnet_notebook_list 查看实例 | 返回脱敏实例列表 | 只读 |
 
 第 4 至 7 步只有在你有私钥和目标集群时才测，测前确认副作用。
 
-第 10b、10e 步是变更操作，会真实占用或释放调度器资源：先用 `dry_run=true` 预览，确认返回里的
+第 14、17 步是变更操作，会真实占用或释放调度器资源：先用 `dry_run=true` 预览，确认返回里的
 目标区域/集群，并且**不要在提交超时后盲目重试**（平台没有幂等键），先查作业状态。
 
 Notebook 创建、启动、停止和释放没有作为 DSH deterministic tool 暴露。此类操作通过
