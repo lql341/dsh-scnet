@@ -28,7 +28,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Setup npm Trusted Publishing client
+        run: |
+          npm install --global npm@latest
+          npm --version
 
       - name: Verify release branch and version
         env:
