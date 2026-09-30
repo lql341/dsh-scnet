@@ -1,7 +1,11 @@
+import { mkdtempSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { execFileSync } from "node:child_process"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"))
+const pycachePrefix = process.env.PYTHONPYCACHEPREFIX ?? mkdtempSync(join(tmpdir(), "dsh-scnet-pycache-"))
 if (!pkg.dsh?.bundle?.patch) throw new Error("package.json must declare dsh.bundle.patch")
 if (!pkg.files?.includes("skills")) throw new Error("package.json must ship skills/")
 if (pkg.dsh.skills !== undefined) throw new Error("dsh.skills is not part of the rc.8 bundle manifest")
@@ -34,6 +38,9 @@ execFileSync("python3", ["-m", "py_compile",
     "skills/scnet-hpc/scripts/scnet_config.py",
     "skills/scnet-hpc/scripts/scnet_credentials.py",
     "skills/scnet-hpc/scripts/scnet_version.py",
-    "skills/scnet-hpc/scripts/compute-probe.py"]], { stdio: "inherit" })
+    "skills/scnet-hpc/scripts/compute-probe.py"]], {
+  stdio: "inherit",
+  env: { ...process.env, PYTHONPYCACHEPREFIX: pycachePrefix },
+})
 execFileSync("npm", ["pack", "--dry-run"], { stdio: "inherit" })
 console.log(`validated ${pkg.name}@${pkg.version}`)
