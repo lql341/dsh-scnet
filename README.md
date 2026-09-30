@@ -4,7 +4,7 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.5.1**
+Current release: **0.6.0**
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.
 
@@ -45,6 +45,10 @@ See [Installation](./docs/installation.md) for npm, GitHub, and local-checkout w
 | `scnet_status` | Read the saved backend, SSH profile, and OpenAPI configuration |
 | `scnet_openapi_regions` | List authorized OpenAPI regions without exposing tokens |
 | `scnet_job_queues` | Query regional Slurm queues and live resource availability |
+| `scnet_submit_job` | Submit a job through OpenAPI or SSH; `dry_run=true` only previews the request |
+| `scnet_job_show` | Read one job's state, resources, and log paths |
+| `scnet_job_logs` | Read job logs by explicit path, or by `job_id` + `work_dir` |
+| `scnet_job_cancel` | Cancel a job; `dry_run=true` only previews the request |
 | `scnet_file_list` | List shared-storage files through the common file API |
 | `scnet_notebook_regions` | List Notebook-capable regions |
 | `scnet_notebook_resources` | Query Notebook CPU/GPU/DCU resources |
