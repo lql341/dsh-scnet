@@ -108,6 +108,12 @@ stable releases with the `latest` tag, and creates the matching Git tag. Do not 
 `package.json`: `skills/scnet-hpc/VERSION`, the package version, and both README release markers
 must stay aligned.
 
+The workflow uses npm Trusted Publishing through GitHub OIDC, so account 2FA/Passkey should remain
+enabled and no long-lived `NPM_TOKEN` is required. Configure `lql341/dsh-scnet` and
+`.github/workflows/publish.yml` as a trusted publisher in the npm package settings before the
+first OIDC release. A granular read/write token with 2FA bypass is a fallback only when Trusted
+Publishing cannot be enabled.
+
 ## Validation
 
 ```sh

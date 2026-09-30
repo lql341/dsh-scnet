@@ -122,6 +122,11 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 不要只修改 `package.json`；`skills/scnet-hpc/VERSION`、package 版本和两份 README 的版本
 标记必须保持一致。
 
+该 workflow 使用 GitHub OIDC 的 npm Trusted Publishing，因此应保留账号的 2FA/Passkey，
+不需要长期保存 `NPM_TOKEN`。首次使用 OIDC 发布前，请在 npm package 设置中把
+`lql341/dsh-scnet` 与 `.github/workflows/publish.yml` 配置为 trusted publisher。只有无法
+启用 Trusted Publishing 时，才考虑使用具备 2FA bypass 的 granular read/write token。
+
 ## 隐私与安全
 
 - 仓库不含私钥、token、用户名、密钥指纹。
