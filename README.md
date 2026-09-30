@@ -4,11 +4,18 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.1**
+Current release: **0.6.2**
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.
 
-## What's new in 0.6.1
+## What's new in 0.6.2
+
+- Completed jobs now resolve through the fast filtered history-list endpoint rather than timing
+  out on the empty history-detail response.
+- Historical field aliases such as `workdir` are normalized for log-path discovery.
+- OpenAPI operations continue without persistent caching when the cache directory is read-only.
+
+## 0.6.1 highlights
 
 - Job details now fall back to the history endpoint when realtime records expire, with complete
   normalized terminal states.
@@ -113,7 +120,7 @@ synchronizes the skill and version into `dsh-scnet` and `codex-scnet-hpc`. Publi
 `dsh-scnet` npm package only after that downstream change is reviewed.
 
 For a synchronized release, run the package validation on `main`, then trigger the repository's
-`Publish DSH-SCNet` workflow with the exact value from `package.json` (currently `0.6.1`). The
+`Publish DSH-SCNet` workflow with the exact value from `package.json` (currently `0.6.2`). The
 workflow verifies the package/Skill version match, runs validation, creates the tarball, publishes
 stable releases with the `latest` tag, and creates the matching Git tag. Do not bump only
 `package.json`: `skills/scnet-hpc/VERSION`, the package version, and both README release markers

@@ -4,9 +4,15 @@
 
 <p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）：配置 SSH、管理 Slurm 作业、查询 OpenAPI 区域和文件、检查 Notebook 资源与实例，并保留海光 DCU/DTK 诊断能力。</p>
 
-当前版本：**0.6.1**
+当前版本：**0.6.2**
 
 > 本项目是独立维护的社区项目，与 DeepSeek Harness 兼容，但不是 DeepSeek 官方产品，也不表示 DeepSeek 对本项目提供背书、合作或授权。
+
+## 0.6.2 更新
+
+- 已结束作业改用快速的历史列表过滤查询，不再卡在返回空数据的历史详情接口。
+- 兼容历史记录中的 `workdir` 等字段变体，可继续推导日志路径。
+- 缓存目录只读时自动降级为无持久缓存，OpenAPI 主功能不再被缓存故障阻断。
 
 ## 0.6.1 更新
 
@@ -126,7 +132,7 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 才能发布对应版本的 `dsh-scnet` npm 包。
 
 下游同步合并到 `main` 后，先运行本地校验，再手动触发仓库的 `Publish DSH-SCNet` workflow，
-输入 `package.json` 中的精确版本（当前为 `0.6.1`）。workflow 会校验 package 与 Skill
+输入 `package.json` 中的精确版本（当前为 `0.6.2`）。workflow 会校验 package 与 Skill
 版本一致，执行验证、生成 tarball、以稳定版 `latest` 标签发布，并创建对应 Git tag。
 不要只修改 `package.json`；`skills/scnet-hpc/VERSION`、package 版本和两份 README 的版本
 标记必须保持一致。

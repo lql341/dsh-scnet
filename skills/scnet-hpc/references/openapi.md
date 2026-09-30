@@ -125,6 +125,13 @@ python3 scripts/scnet.py --backend openapi --region <id> \
   jobs --scope history --days 30 --limit 20
 ```
 
+`job <job-id>` checks the realtime endpoint first and automatically falls back to the filtered
+history-list endpoint. The caller does not need to provide `acctTime`.
+
+Region tokens are cached under `${XDG_CACHE_HOME:-~/.cache}/scnet-hpc` when that location is
+writable. Cache locking or writes are best-effort; an unavailable cache never blocks an OpenAPI
+operation.
+
 Uploads larger than 8 MiB automatically use the documented burst/merge flow. Override the
 threshold and chunk size with `--chunk-size <bytes>`; use `--chunk-size 0` to force ordinary
 multipart upload. The current implementation keeps one chunk in memory at a time.

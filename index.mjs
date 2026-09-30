@@ -197,6 +197,9 @@ function translateScnetError(text) {
       '若只想看日志，请直接给日志文件的 path；若刚提交不久，可稍后重试。'
     )
   }
+  if (/realtime and history endpoints returned no job record/i.test(value)) {
+    return '平台的实时和最近 30 天历史记录中都没有找到这个作业，请核对 job_id 和区域。'
+  }
   return value
 }
 
@@ -577,7 +580,7 @@ export function apply(ctx) {
     defineTool({
       name: 'scnet_job_show',
       description:
-        '只读查询一个作业的状态与资源（state / exit_code / work_dir / stdout / stderr）。作业完成较久后平台可能不再返回记录，此时用 scnet_job_logs 的 path 模式读日志即可。',
+        '只读查询一个作业的状态与资源（state / exit_code / work_dir / stdout / stderr）。自动先查实时记录，再回退最近 30 天历史记录；用户只需提供 job_id。',
       parameters: {
         job_id: { type: 'string', required: true, description: '作业号' },
         backend: { type: 'string', description: 'openapi（默认）或 ssh' },

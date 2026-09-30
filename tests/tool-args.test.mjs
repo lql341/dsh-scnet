@@ -83,6 +83,12 @@ test('译错：job 端点形状错误给出可执行解释，而不是原始内�
   assert.doesNotMatch(text, /unexpected data shape/)
 })
 
+test('译错：实时和历史都无记录时提示核对作业号和区域', () => {
+  const text = translateScnetError('realtime and history endpoints returned no job record')
+  assert.match(text, /核对 job_id 和区域/)
+  assert.doesNotMatch(text, /endpoints returned/)
+})
+
 test('译错：未命中的错误原样透出', () => {
   assert.equal(translateScnetError('some other failure'), 'some other failure')
 })
