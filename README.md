@@ -45,6 +45,10 @@ See [Installation](./docs/installation.md) for npm, GitHub, and local-checkout w
 | `scnet_status` | Read the saved backend, SSH profile, and OpenAPI configuration |
 | `scnet_openapi_regions` | List authorized OpenAPI regions without exposing tokens |
 | `scnet_job_queues` | Query regional Slurm queues and live resource availability |
+| `scnet_submit_job` | Submit a job through OpenAPI or SSH; `dry_run=true` only previews the request |
+| `scnet_job_show` | Read one job's state, resources, and log paths |
+| `scnet_job_logs` | Read job logs by explicit path, or by `job_id` + `work_dir` |
+| `scnet_job_cancel` | Cancel a job; `dry_run=true` only previews the request |
 | `scnet_file_list` | List shared-storage files through the common file API |
 | `scnet_notebook_regions` | List Notebook-capable regions |
 | `scnet_notebook_resources` | Query Notebook CPU/GPU/DCU resources |

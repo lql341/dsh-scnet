@@ -53,6 +53,10 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 | scnet_status | 只读查看 backend、SSH profile 和 OpenAPI 配置 |
 | scnet_openapi_regions | 列出授权 OpenAPI 区域，不暴露 token |
 | scnet_job_queues | 查询区域 Slurm 队列和实时空闲资源 |
+| scnet_submit_job | 通过 OpenAPI 或 SSH 提交作业；dry_run=true 只预览请求 |
+| scnet_job_show | 查询单个作业的状态、资源与日志路径 |
+| scnet_job_logs | 按显式 path，或按 job_id + work_dir 读取作业日志 |
+| scnet_job_cancel | 取消作业；dry_run=true 只预览请求 |
 | scnet_file_list | 通过通用文件 API 列出共享存储 |
 | scnet_notebook_regions | 列出支持 Notebook 的区域 |
 | scnet_notebook_resources | 查询 Notebook CPU/GPU/DCU 资源 |

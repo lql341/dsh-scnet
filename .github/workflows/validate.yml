@@ -27,6 +27,9 @@ jobs:
       - name: Validate package
         run: npm run validate
 
+      - name: Run tool unit tests
+        run: npm test
+
       - name: Verify synchronized skill
         run: |
           git clone --depth 1 https://github.com/lql341/scnet-hpc.git ../scnet-hpc-source

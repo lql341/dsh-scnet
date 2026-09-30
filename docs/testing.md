@@ -40,6 +40,10 @@ Confirm that the composed configuration includes:
 | `scnet_status` | Returns redacted local SCNet configuration |
 | `scnet_openapi_regions` | Returns authorized regions without tokens |
 | `scnet_job_queues` | Returns live regional Slurm queues |
+| `scnet_submit_job` | Submits a job through OpenAPI or SSH; `dry_run=true` returns the pending request only |
+| `scnet_job_show` | Returns one job's state, resources, and log paths |
+| `scnet_job_logs` | Reads job logs by explicit path, or by `job_id` + `work_dir` |
+| `scnet_job_cancel` | Cancels one job; `dry_run=true` returns the pending request only |
 | `scnet_file_list` | Lists shared-storage files without modification |
 | `scnet_notebook_regions` | Lists Notebook-capable regions |
 | `scnet_notebook_resources` | Returns Notebook resource groups |
@@ -59,6 +63,10 @@ Check both accelerator and CPU-only job generation. Review the output for the se
 ## 6. Scheduler-consuming checks
 
 `scnet_run_compute_probe` and refresh operations with compute probing submit Slurm jobs. Confirm the target cluster, account policy, accelerator count, CPU count, and time limit before execution.
+
+`scnet_submit_job` and `scnet_job_cancel` are mutating tools and consume or release real scheduler
+resources. Run them with `dry_run=true` first, confirm the resolved target region or cluster in the
+result, and never retry a timed-out submission blindly: query the job state instead.
 
 Notebook lifecycle mutations are intentionally not exposed as deterministic DSH tools in this
 release. Test them only through the Skill CLI and start with `--dry-run`.
