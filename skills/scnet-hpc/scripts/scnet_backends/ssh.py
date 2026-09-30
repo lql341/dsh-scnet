@@ -220,7 +220,10 @@ class SSHBackend(Backend):
 
     def op_upload(self, options: Mapping[str, Any]) -> Any:
         local_path = Path(str(require_option(options, "local_path"))).expanduser()
-        remote_path = str(require_option(options, "remote_path"))
+        remote_path = str(
+            options.get("remote_dir")
+            or require_option(options, "remote_path")
+        )
         if not local_path.is_file():
             raise BackendError(f"local file does not exist: {local_path}")
         if not remote_path.startswith("/") or "\n" in remote_path:

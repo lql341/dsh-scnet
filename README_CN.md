@@ -4,9 +4,15 @@
 
 <p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）：配置 SSH、管理 Slurm 作业、查询 OpenAPI 区域和文件、检查 Notebook 资源与实例，并保留海光 DCU/DTK 诊断能力。</p>
 
-当前版本：**0.6.0**
+当前版本：**0.6.1**
 
 > 本项目是独立维护的社区项目，与 DeepSeek Harness 兼容，但不是 DeepSeek 官方产品，也不表示 DeepSeek 对本项目提供背书、合作或授权。
+
+## 0.6.1 更新
+
+- 作业实时记录过期时自动回退历史接口，并补全终态映射。
+- 新增紧凑的 `scnet_job_list`、`scnet_limits`、`scnet_file_transfer` 工具。
+- 明确 OpenAPI 上传参数是远端目录，文件名沿用本地文件名，不能把文件名当作远端目录传入。
 
 ## 0.6.0 更新
 
@@ -60,11 +66,14 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 | scnet_status | 只读查看 backend、SSH profile 和 OpenAPI 配置 |
 | scnet_openapi_regions | 列出授权 OpenAPI 区域，不暴露 token |
 | scnet_job_queues | 查询区域 Slurm 队列和实时空闲资源 |
+| scnet_job_list | 紧凑列出当前或历史作业 |
+| scnet_limits | 查询用户和调度器资源限制 |
 | scnet_submit_job | 通过 OpenAPI 或 SSH 提交作业；dry_run=true 只预览请求 |
 | scnet_job_show | 查询单个作业的状态、资源与日志路径 |
 | scnet_job_logs | 按显式 path，或按 job_id + work_dir 读取作业日志 |
 | scnet_job_cancel | 取消作业；dry_run=true 只预览请求 |
 | scnet_file_list | 通过通用文件 API 列出共享存储 |
+| scnet_file_transfer | 上传或下载单个文件，默认不覆盖 |
 | scnet_notebook_regions | 列出支持 Notebook 的区域 |
 | scnet_notebook_resources | 查询 Notebook CPU/GPU/DCU 资源 |
 | scnet_notebook_list | 列出 Notebook 实例并脱敏敏感字段 |
@@ -117,7 +126,7 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 才能发布对应版本的 `dsh-scnet` npm 包。
 
 下游同步合并到 `main` 后，先运行本地校验，再手动触发仓库的 `Publish DSH-SCNet` workflow，
-输入 `package.json` 中的精确版本（当前为 `0.6.0`）。workflow 会校验 package 与 Skill
+输入 `package.json` 中的精确版本（当前为 `0.6.1`）。workflow 会校验 package 与 Skill
 版本一致，执行验证、生成 tarball、以稳定版 `latest` 标签发布，并创建对应 Git tag。
 不要只修改 `package.json`；`skills/scnet-hpc/VERSION`、package 版本和两份 README 的版本
 标记必须保持一致。

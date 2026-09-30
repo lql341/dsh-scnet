@@ -40,11 +40,14 @@ Confirm that the composed configuration includes:
 | `scnet_status` | Returns redacted local SCNet configuration |
 | `scnet_openapi_regions` | Returns authorized regions without tokens |
 | `scnet_job_queues` | Returns live regional Slurm queues |
+| `scnet_job_list` | Lists active or historical jobs |
+| `scnet_limits` | Returns user and scheduler resource limits |
 | `scnet_submit_job` | Submits a job through OpenAPI or SSH; `dry_run=true` returns the pending request only |
 | `scnet_job_show` | Returns one job's state, resources, and log paths |
 | `scnet_job_logs` | Reads job logs by explicit path, or by `job_id` + `work_dir` |
 | `scnet_job_cancel` | Cancels one job; `dry_run=true` returns the pending request only |
 | `scnet_file_list` | Lists shared-storage files without modification |
+| `scnet_file_transfer` | Uploads or downloads one file; defaults to no overwrite |
 | `scnet_notebook_regions` | Lists Notebook-capable regions |
 | `scnet_notebook_resources` | Returns Notebook resource groups |
 | `scnet_notebook_list` | Lists redacted Notebook instances |

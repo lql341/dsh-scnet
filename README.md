@@ -4,11 +4,19 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.0**
+Current release: **0.6.1**
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.
 
-## What's new in 0.6.0
+## What's new in 0.6.1
+
+- Job details now fall back to the history endpoint when realtime records expire, with complete
+  normalized terminal states.
+- Added compact `scnet_job_list`, `scnet_limits`, and `scnet_file_transfer` tools.
+- File uploads now make the remote-directory contract explicit: the local filename is preserved
+  and must not be passed as the remote directory.
+
+## 0.6.0 highlights
 
 - Added first-class DSH tools for submitting jobs, inspecting job status, reading logs, and
   cancelling jobs through the existing SSH/OpenAPI backends.
@@ -53,11 +61,14 @@ See [Installation](./docs/installation.md) for npm, GitHub, and local-checkout w
 | `scnet_status` | Read the saved backend, SSH profile, and OpenAPI configuration |
 | `scnet_openapi_regions` | List authorized OpenAPI regions without exposing tokens |
 | `scnet_job_queues` | Query regional Slurm queues and live resource availability |
+| `scnet_job_list` | List active or historical jobs with compact normalized records |
+| `scnet_limits` | Read user and scheduler resource limits |
 | `scnet_submit_job` | Submit a job through OpenAPI or SSH; `dry_run=true` only previews the request |
 | `scnet_job_show` | Read one job's state, resources, and log paths |
 | `scnet_job_logs` | Read job logs by explicit path, or by `job_id` + `work_dir` |
 | `scnet_job_cancel` | Cancel a job; `dry_run=true` only previews the request |
 | `scnet_file_list` | List shared-storage files through the common file API |
+| `scnet_file_transfer` | Upload or download one file without overwriting by default |
 | `scnet_notebook_regions` | List Notebook-capable regions |
 | `scnet_notebook_resources` | Query Notebook CPU/GPU/DCU resources |
 | `scnet_notebook_list` | List Notebook instances with sensitive fields redacted |
@@ -102,7 +113,7 @@ synchronizes the skill and version into `dsh-scnet` and `codex-scnet-hpc`. Publi
 `dsh-scnet` npm package only after that downstream change is reviewed.
 
 For a synchronized release, run the package validation on `main`, then trigger the repository's
-`Publish DSH-SCNet` workflow with the exact value from `package.json` (currently `0.6.0`). The
+`Publish DSH-SCNet` workflow with the exact value from `package.json` (currently `0.6.1`). The
 workflow verifies the package/Skill version match, runs validation, creates the tarball, publishes
 stable releases with the `latest` tag, and creates the matching Git tag. Do not bump only
 `package.json`: `skills/scnet-hpc/VERSION`, the package version, and both README release markers

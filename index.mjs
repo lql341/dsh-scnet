@@ -367,6 +367,68 @@ export function apply(ctx) {
 
   ctx.tools.register(
     defineTool({
+      name: 'scnet_job_list',
+      description:
+        '只读列出 SCNet 作业。默认列出当前区域正在排队或运行的作业；scope=history 时查询最近历史作业。区域、数量和历史天数都可省略，输出保持紧凑。',
+      parameters: {
+        scope: { type: 'string', description: 'active（默认）或 history' },
+        region: { type: 'string', description: '区域名称或 ID；省略时使用已保存的默认区域' },
+        limit: { type: 'number', description: '最多返回条数，默认 20，最大 100' },
+        days: { type: 'number', description: 'history 模式查询最近天数，默认 30，最大 90' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const scope = String(args.scope ?? 'active').trim().toLowerCase()
+        if (scope !== 'active' && scope !== 'history') {
+          return 'scope 只支持 active 或 history。'
+        }
+        const argv = ['--backend', 'openapi', ...regionArgs(args.region), 'jobs', '--scope', scope]
+        if (args.limit !== undefined) {
+          const checked = positiveInt(args.limit, 'limit')
+          if (checked?.error) return checked.error
+          argv.push('--limit', checked.value)
+        }
+        if (args.days !== undefined) {
+          const checked = positiveInt(args.days, 'days')
+          if (checked?.error) return checked.error
+          argv.push('--days', checked.value)
+        }
+        return scnetResult(await runScnet(argv), '查询作业列表')
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_limits',
+      description:
+        '只读查询当前区域和调度器的用户资源限制。region、scheduler_id 都可省略，后端会自动解析唯一目标。',
+      parameters: {
+        region: { type: 'string', description: '区域名称或 ID；省略时使用默认区域' },
+        scheduler_id: { type: 'string', description: '调度器 ID；只有多个调度器且无法自动选择时填写' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const argv = [
+          '--backend',
+          'openapi',
+          ...regionArgs(args.region),
+          ...(args.scheduler_id ? ['--scheduler-id', String(args.scheduler_id)] : []),
+          'limits',
+        ]
+        return scnetResult(await runScnet(argv), '查询资源限制')
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
       name: 'scnet_submit_job',
       description:
         '提交一个 SCNet 作业。默认走 OpenAPI；backend=ssh 时提交远端已存在的 Slurm 脚本。这是变更操作，会占用配额，执行前应确认目标、资源与时长。region/cluster/scheduler 能自动解析；dry_run=true 只预览请求不提交。提交成功后返回 job_id 与日志路径，可直接交给 scnet_job_logs。',
@@ -630,6 +692,55 @@ export function apply(ctx) {
         if (args.dry_run === true) argv.push('--dry-run')
         argv.push('cancel', jobId)
         return scnetJobResult(await runScnet(argv), '取消作业')
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_file_transfer',
+      description:
+        '在本地与 SCNet 区域共享存储之间传输一个文件。direction=upload 或 download；upload 的 remote_dir 是目录而不是文件名。默认不覆盖，执行前应确认区域和路径，dry_run=true 只预览。',
+      parameters: {
+        direction: { type: 'string', required: true, description: 'upload 或 download' },
+        local_path: { type: 'string', required: true, description: '本地文件路径' },
+        remote_dir: { type: 'string', description: 'upload 时必填：区域共享存储中的绝对目录；文件名由 local_path 保留' },
+        remote_path: { type: 'string', description: 'download：区域共享存储中的绝对文件路径' },
+        backend: { type: 'string', description: 'openapi（默认）或 ssh' },
+        region: { type: 'string', description: 'OpenAPI 区域；省略时使用默认区域' },
+        cluster: { type: 'string', description: 'SSH 集群短名；多个 profile 时必须指定' },
+        overwrite: { type: 'boolean', description: '是否覆盖已有目标，默认否' },
+        dry_run: { type: 'boolean', description: '只预览，不传输（默认否）' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const direction = String(args.direction ?? '').trim().toLowerCase()
+        if (direction !== 'upload' && direction !== 'download') {
+          return 'direction 只支持 upload 或 download。'
+        }
+        const localPath = String(args.local_path ?? '').trim()
+        const remoteDir = String(args.remote_dir ?? '').trim()
+        const remotePath = String(args.remote_path ?? '').trim()
+        if (!localPath) return '缺少必填参数 local_path。'
+        if (direction === 'upload' && !remoteDir) return '缺少必填参数 remote_dir（目录，不是文件名）。'
+        if (direction === 'download' && !remotePath) return '缺少必填参数 remote_path。'
+        const target = await resolveTarget(args)
+        if (target.error) return target.error
+        const argv = [...target.argv]
+        if (args.dry_run === true) argv.push('--dry-run')
+        if (direction === 'upload') {
+          argv.push('upload', localPath, remoteDir)
+        } else {
+          argv.push('download', remotePath, localPath)
+        }
+        if (args.overwrite === true) argv.push('--cover')
+        return scnetResult(
+          await runScnet(argv, 180000),
+          direction === 'upload' ? '上传文件' : '下载文件',
+        )
       },
     }),
   )
