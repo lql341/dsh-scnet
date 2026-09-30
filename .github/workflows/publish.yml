@@ -71,7 +71,7 @@ jobs:
           RELEASE_TARBALL=".release/dsh-scnet-${RELEASE_VERSION}.tgz"
           test -f "$RELEASE_TARBALL"
           echo "RELEASE_TARBALL=$RELEASE_TARBALL" >> "$GITHUB_ENV"
-          LOCAL_INTEGRITY="$(npm pack --json --dry-run | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s)[0].integrity))')"
+          LOCAL_INTEGRITY="$(npm pack --json --dry-run | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const value=JSON.parse(s); const item=Array.isArray(value) ? value[0] : value; console.log(item.integrity)})')"
           PUBLISHED_INTEGRITY="$(npm view "dsh-scnet@${RELEASE_VERSION}" dist.integrity 2>/dev/null || true)"
           if [ -n "$PUBLISHED_INTEGRITY" ]; then
             test "$LOCAL_INTEGRITY" = "$PUBLISHED_INTEGRITY"
