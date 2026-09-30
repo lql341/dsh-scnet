@@ -6,6 +6,7 @@ import json
 import mimetypes
 import re
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
@@ -29,6 +30,12 @@ STATUS_MAP = {
     "statC": "COMPLETED",
     "statW": "WAITING",
     "statX": "OTHER",
+    "statDE": "CANCELLED",
+    "statD": "FAILED",
+    "statEX": "ABNORMAL",
+    "statT": "TIMEOUT",
+    "statN": "NODE_ERROR",
+    "statRQ": "REQUEUED",
 }
 WALLTIME_RE = re.compile(r"^(?:[0-9]+-)?[0-9]{1,3}:[0-9]{2}:[0-9]{2}$")
 
@@ -44,7 +51,12 @@ def _bounded_int(options: Mapping[str, Any], name: str, minimum: int) -> int:
 
 
 def normalize_job(item: Mapping[str, Any]) -> dict[str, Any]:
-    raw_state = item.get("jobStatus") or item.get("state") or ""
+    raw_state = (
+        item.get("jobStatus")
+        or item.get("jobState")
+        or item.get("state")
+        or ""
+    )
     return {
         "job_id": str(item.get("jobId") or item.get("job_id") or ""),
         "name": item.get("jobName") or item.get("name"),
@@ -76,6 +88,7 @@ class OpenAPIBackend(Backend):
             "queues",
             "limits",
             "job",
+            "jobs",
             "logs",
             "submit",
             "cancel",
@@ -335,18 +348,134 @@ class OpenAPIBackend(Backend):
 
     def op_job(self, options: Mapping[str, Any]) -> Any:
         job_id = str(require_option(options, "job_id"))
-        hpc_url, token, _, _, _ = self._hpc_context(options)
-        data = self._json_request(
+        hpc_url, token, scheduler_id, _, _ = self._hpc_context(options)
+        realtime_error: str | None = None
+        data: Any = None
+        try:
+            data = self._json_request(
+                "GET",
+                service_endpoint(hpc_url, "hpc", f"/openapi/v2/jobs/{quote(job_id)}"),
+                token=token,
+            )
+        except BackendError as exc:
+            if not self._is_missing_job_error(str(exc)):
+                raise
+            realtime_error = str(exc)
+
+        if isinstance(data, dict):
+            candidate = data
+            if candidate.get("jobId") or candidate.get("job_id"):
+                result = normalize_job(candidate)
+                result["source"] = "realtime"
+                if options.get("raw"):
+                    result["raw"] = candidate
+                return result
+
+        history = self._history_job(
+            hpc_url,
+            token,
+            scheduler_id,
+            job_id,
+            options,
+        )
+        if not isinstance(history, dict) or not (
+            history.get("jobId") or history.get("job_id")
+        ):
+            detail = "realtime and history endpoints returned no job record"
+            if realtime_error:
+                detail += f" ({realtime_error})"
+            raise BackendError(detail)
+        result = normalize_job(history)
+        result["source"] = "history"
+        if options.get("raw"):
+            result["raw"] = history
+        return result
+
+    @staticmethod
+    def _is_missing_job_error(text: str) -> bool:
+        value = text.lower()
+        return any(
+            marker in value
+            for marker in (
+                "unexpected data shape",
+                "http 404",
+                "not found",
+                "does not exist",
+                "不存在",
+            )
+        )
+
+    def _history_job(
+        self,
+        hpc_url: str,
+        token: str,
+        scheduler_id: str,
+        job_id: str,
+        options: Mapping[str, Any],
+    ) -> Any:
+        if not scheduler_id:
+            raise BackendError("history lookup requires a scheduler id")
+        path = f"/openapi/v2/historyjobs/{quote(scheduler_id)}/{quote(job_id)}"
+        acct_time = str(options.get("acct_time") or "").strip()
+        if acct_time:
+            path += "?" + urlencode({"acctTime": acct_time})
+        return self._json_request(
             "GET",
-            service_endpoint(hpc_url, "hpc", f"/openapi/v2/jobs/{quote(job_id)}"),
+            service_endpoint(hpc_url, "hpc", path),
             token=token,
         )
-        if not isinstance(data, dict):
-            raise BackendError("job endpoint returned an unexpected data shape")
-        result = normalize_job(data)
-        if options.get("raw"):
-            result["raw"] = data
-        return result
+
+    def op_jobs(self, options: Mapping[str, Any]) -> Any:
+        hpc_url, token, scheduler_id, _, _ = self._hpc_context(options)
+        scope = str(options.get("scope") or "active").strip().lower()
+        if scope not in {"active", "history"}:
+            raise BackendError("scope must be active or history")
+        limit = _bounded_int(options, "limit", 1)
+        if limit > 100:
+            raise BackendError("limit must be <= 100")
+        if scope == "active":
+            path = "/openapi/v2/jobs"
+            params = {
+                "strClusterIDList": scheduler_id,
+                "start": 0,
+                "limit": limit,
+            }
+        else:
+            days = _bounded_int(options, "days", 1)
+            if days > 90:
+                raise BackendError("days must be <= 90")
+            end = datetime.now(timezone.utc)
+            start = end - timedelta(days=days)
+            path = "/openapi/v2/historyjobs"
+            params = {
+                "strClusterNameList": scheduler_id,
+                "timeType": "CUSTOM",
+                "isQueryByQueueTime": "false",
+                "start": 0,
+                "limit": limit,
+                "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+                "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        data = self._json_request(
+            "GET",
+            service_endpoint(hpc_url, "hpc", path) + "?" + urlencode(params),
+            token=token,
+        )
+        if isinstance(data, dict):
+            items = data.get("items") or data.get("list") or data.get("rows") or []
+            total = data.get("total")
+        else:
+            items = data or []
+            total = None
+        if not isinstance(items, list):
+            raise BackendError("job list endpoint returned an unexpected data shape")
+        result = [normalize_job(item) for item in items if isinstance(item, dict)]
+        payload = {
+            "scope": scope,
+            "items": result,
+            "total": total if total is not None else len(result),
+        }
+        return {"data": payload, "raw": data} if options.get("raw") else payload
 
     def op_logs(self, options: Mapping[str, Any]) -> Any:
         path = str(require_option(options, "path"))
@@ -580,14 +709,17 @@ class OpenAPIBackend(Backend):
 
     def op_upload(self, options: Mapping[str, Any]) -> Any:
         local_path = Path(str(require_option(options, "local_path"))).expanduser()
-        remote_path = str(require_option(options, "remote_path"))
+        remote_dir = str(
+            options.get("remote_dir")
+            or require_option(options, "remote_path")
+        )
         if not local_path.is_file():
             raise BackendError(f"local file does not exist: {local_path}")
         if (
-            not remote_path.startswith("/")
-            or "\n" in remote_path
-            or "\r" in remote_path
-            or "\x00" in remote_path
+            not remote_dir.startswith("/")
+            or "\n" in remote_dir
+            or "\r" in remote_dir
+            or "\x00" in remote_dir
         ):
             raise BackendError("remote upload directory must be absolute")
         chunk_size = int(options.get("chunk_size") or 0)
@@ -596,7 +728,7 @@ class OpenAPIBackend(Backend):
         if chunk_size and chunk_size < 1024 * 1024:
             raise BackendError("chunk size must be at least 1 MiB or 0")
         if chunk_size and local_path.stat().st_size > chunk_size:
-            return self._op_chunked_upload(local_path, remote_path, options, chunk_size)
+            return self._op_chunked_upload(local_path, remote_dir, options, chunk_size)
         efile_url, token, _ = self._efile_context(options)
         content_type = mimetypes.guess_type(local_path.name)[0] or "application/octet-stream"
         self._multipart_request(
@@ -604,13 +736,17 @@ class OpenAPIBackend(Backend):
             token,
             {
                 "cover": "cover" if options.get("cover") else "uncover",
-                "path": remote_path,
+                "path": remote_dir,
             },
             local_path.name,
             local_path.read_bytes(),
             content_type,
         )
-        return {"local_path": str(local_path), "remote_path": remote_path}
+        return {
+            "local_path": str(local_path),
+            "remote_dir": remote_dir,
+            "remote_filename": local_path.name,
+        }
 
     def _multipart_request(
         self,

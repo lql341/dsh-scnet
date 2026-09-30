@@ -110,6 +110,21 @@ python3 scripts/scnet.py --backend openapi --region <id> \
 Downloads refuse to replace an existing local path unless `--cover` is supplied. Uploads send
 `uncover` by default and require `--cover` for replacement.
 
+For uploads, the second argument is always a remote **directory**, not a complete filename.
+The uploaded filename comes from the local file. For example, uploading `mesh.bin` to
+`/public/home/alice/mesh` creates `/public/home/alice/mesh/mesh.bin`; passing
+`/public/home/alice/mesh.bin` as the second argument asks the API to use `mesh.bin` as a
+directory name.
+
+List active or historical jobs without supplying a job ID:
+
+```bash
+python3 scripts/scnet.py --backend openapi --region <id> \
+  jobs --scope active --limit 20
+python3 scripts/scnet.py --backend openapi --region <id> \
+  jobs --scope history --days 30 --limit 20
+```
+
 Uploads larger than 8 MiB automatically use the documented burst/merge flow. Override the
 threshold and chunk size with `--chunk-size <bytes>`; use `--chunk-size 0` to force ordinary
 multipart upload. The current implementation keeps one chunk in memory at a time.

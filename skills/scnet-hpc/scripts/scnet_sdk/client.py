@@ -7,6 +7,7 @@ import hmac
 import json
 import os
 import time
+from pathlib import Path
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
@@ -45,6 +46,8 @@ def service_endpoint(base_url: str, service: str, suffix: str) -> str:
 class SCNetClient:
     """One authenticated OpenAPI client shared by service-specific domains."""
 
+    TOKEN_CACHE_TTL = 4 * 60 * 60
+
     def __init__(self, context: BackendContext):
         self.context = context
         self._regions_cache: list[dict[str, Any]] | None = None
@@ -54,6 +57,79 @@ class SCNetClient:
     def env(name: str, default: str | None = None) -> str | None:
         value = os.environ.get(name)
         return value if value not in (None, "") else default
+
+    @classmethod
+    def _token_cache_paths(cls) -> tuple[Path, Path]:
+        root = Path(cls.env("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "scnet-hpc"
+        return root / "openapi-regions.json", root / "openapi-regions.lock"
+
+    @staticmethod
+    def _credential_fingerprint(user: str, access_key: str, secret_key: str) -> str:
+        value = "\0".join((user, access_key, secret_key)).encode("utf-8")
+        return hashlib.sha256(value).hexdigest()
+
+    @classmethod
+    def _read_token_cache(cls, fingerprint: str) -> list[dict[str, Any]] | None:
+        path, _ = cls._token_cache_paths()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if (
+                payload.get("fingerprint") != fingerprint
+                or time.time() - float(payload.get("created_at", 0)) > cls.TOKEN_CACHE_TTL
+                or not isinstance(payload.get("regions"), list)
+            ):
+                return None
+            return [item for item in payload["regions"] if isinstance(item, dict)]
+        except (OSError, TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _write_token_cache(
+        cls, fingerprint: str, regions: list[dict[str, Any]]
+    ) -> None:
+        path, _ = cls._token_cache_paths()
+        path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "created_at": time.time(),
+                    "fingerprint": fingerprint,
+                    "regions": regions,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+
+    @classmethod
+    def _acquire_token_cache_lock(cls) -> Path | None:
+        _, lock = cls._token_cache_paths()
+        lock.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        for _ in range(50):
+            try:
+                fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                os.close(fd)
+                return lock
+            except FileExistsError:
+                try:
+                    if time.time() - lock.stat().st_mtime > 30:
+                        lock.unlink()
+                        continue
+                except OSError:
+                    pass
+                time.sleep(0.2)
+        return None
+
+    @staticmethod
+    def _release_token_cache_lock(lock: Path | None) -> None:
+        if lock is not None:
+            try:
+                lock.unlink()
+            except FileNotFoundError:
+                pass
 
     def request(
         self,
@@ -150,25 +226,41 @@ class SCNetClient:
                 "OpenAPI credentials are not configured; run setup or set "
                 + ", ".join(missing)
             )
-        timestamp = str(int(time.time()))
-        signature = canonical_signature(access_key, timestamp, user, secret_key)
-        auth_base = self.env("SCNET_OPENAPI_AUTH_BASE", "https://api.scnet.cn")
-        data = self.request(
-            "POST",
-            auth_base.rstrip("/") + "/api/user/v3/tokens",
-            headers={
-                "user": user,
-                "accessKey": access_key,
-                "signature": signature,
-                "timestamp": timestamp,
-            },
-        )
-        if not isinstance(data, list):
-            raise BackendError("token endpoint returned an unexpected data shape")
-        self._regions_cache = [
-            item for item in data if isinstance(item, dict)
-        ]
-        return self._regions_cache
+        fingerprint = self._credential_fingerprint(user, access_key, secret_key)
+        if not refresh:
+            cached = self._read_token_cache(fingerprint)
+            if cached:
+                self._regions_cache = cached
+                return cached
+        lock = self._acquire_token_cache_lock()
+        try:
+            if not refresh:
+                cached = self._read_token_cache(fingerprint)
+                if cached:
+                    self._regions_cache = cached
+                    return cached
+            timestamp = str(int(time.time()))
+            signature = canonical_signature(access_key, timestamp, user, secret_key)
+            auth_base = self.env("SCNET_OPENAPI_AUTH_BASE", "https://api.scnet.cn")
+            data = self.request(
+                "POST",
+                auth_base.rstrip("/") + "/api/user/v3/tokens",
+                headers={
+                    "user": user,
+                    "accessKey": access_key,
+                    "signature": signature,
+                    "timestamp": timestamp,
+                },
+            )
+            if not isinstance(data, list):
+                raise BackendError("token endpoint returned an unexpected data shape")
+            self._regions_cache = [
+                item for item in data if isinstance(item, dict)
+            ]
+            self._write_token_cache(fingerprint, self._regions_cache)
+            return self._regions_cache
+        finally:
+            self._release_token_cache_lock(lock)
 
     def select_region(
         self, requested: str | None

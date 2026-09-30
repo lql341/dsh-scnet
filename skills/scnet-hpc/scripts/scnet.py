@@ -123,6 +123,11 @@ def build_parser() -> argparse.ArgumentParser:
     job = subparsers.add_parser("job", help="show one job")
     job.add_argument("job_id")
 
+    jobs = subparsers.add_parser("jobs", help="list active or historical jobs")
+    jobs.add_argument("--scope", choices=("active", "history"), default="active")
+    jobs.add_argument("--limit", type=int, default=20)
+    jobs.add_argument("--days", type=int, default=30)
+
     logs = subparsers.add_parser("logs", help="read a log file")
     logs.add_argument("--path", required=True)
     logs.add_argument("--lines", type=int, default=200)
@@ -166,9 +171,9 @@ def build_parser() -> argparse.ArgumentParser:
         default="name",
     )
 
-    upload = subparsers.add_parser("upload", help="upload one file")
+    upload = subparsers.add_parser("upload", help="upload one file into a remote directory")
     upload.add_argument("local_path")
-    upload.add_argument("remote_path")
+    upload.add_argument("remote_dir", help="remote destination directory, not a filename")
     upload.add_argument("--cover", action="store_true")
     upload.add_argument(
         "--chunk-size",
