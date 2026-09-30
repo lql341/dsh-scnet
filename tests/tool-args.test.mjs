@@ -6,12 +6,30 @@ import { __testables } from '../index.mjs'
 
 const {
   MISSING_HINTS,
+  SUBMIT_REQUIRED_ORDER,
   errorTextFrom,
+  firstMissingRequired,
   parseWalltimeSeconds,
   pickBackend,
   queueCandidates,
   translateScnetError,
 } = __testables
+
+test('firstMissingRequired 按 CLI 必填顺序一次只报一个，且不含 queue', () => {
+  assert.deepEqual(SUBMIT_REQUIRED_ORDER, ['name', 'command', 'work_dir'])
+  assert.equal(firstMissingRequired({}, SUBMIT_REQUIRED_ORDER), 'name')
+  assert.equal(firstMissingRequired({ name: 'j' }, SUBMIT_REQUIRED_ORDER), 'command')
+  assert.equal(
+    firstMissingRequired({ name: 'j', command: 'echo' }, SUBMIT_REQUIRED_ORDER),
+    'work_dir',
+  )
+  assert.equal(
+    firstMissingRequired({ name: 'j', command: 'echo', work_dir: '/w' }, SUBMIT_REQUIRED_ORDER),
+    '',
+  )
+  // queue 交给队列预检：可能是自动选择，也可能是"请补一个"，不参与本地顺序
+  assert.ok(!SUBMIT_REQUIRED_ORDER.includes('queue'))
+})
 
 test('parseWalltimeSeconds 支持 HH:MM:SS 与 D-HH:MM:SS', () => {
   assert.equal(parseWalltimeSeconds('00:05:00'), 300)

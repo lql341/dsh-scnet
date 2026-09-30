@@ -113,6 +113,17 @@ const MISSING_HINTS = {
   path: '缺 path：请给出远端日志文件的绝对路径。',
 }
 
+// 与 CLI 的必填顺序保持一致（openapi.py 的 _submit_payload：name → command → work_dir → queue）。
+// queue 不在这里：它由队列预检统一处理，可能是自动选择、也可能是"请补一个"。
+const SUBMIT_REQUIRED_ORDER = ['name', 'command', 'work_dir']
+
+function firstMissingRequired(args, keys) {
+  for (const key of keys) {
+    if (!String(args[key] ?? '').trim()) return key
+  }
+  return ''
+}
+
 // backend 默认 openapi，不强制用户填写
 function pickBackend(value) {
   const raw = String(value ?? '').trim().toLowerCase()
@@ -408,6 +419,11 @@ export function apply(ctx) {
           const checked = positiveInt(args[key], key)
           if (checked && checked.error) return checked.error
         }
+
+        // 按 CLI 的必填顺序先做本地检查，一次只提示一个，
+        // 并避免在参数不全时就发起队列查询。
+        const missing = firstMissingRequired(args, SUBMIT_REQUIRED_ORDER)
+        if (missing) return MISSING_HINTS[missing]
 
         const precheck = await precheckQueue(target, args)
         if (precheck.error) return precheck.error
@@ -935,7 +951,9 @@ export function apply(ctx) {
 // 仅供 tests/ 使用：把作业生命周期里的纯函数暴露出来做单元测试。
 export const __testables = {
   MISSING_HINTS,
+  SUBMIT_REQUIRED_ORDER,
   errorTextFrom,
+  firstMissingRequired,
   parseWalltimeSeconds,
   pickBackend,
   queueCandidates,
