@@ -1,6 +1,6 @@
 {
   "name": "dsh-scnet",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Community DeepSeek Harness bundle for SCNet SSH and OpenAPI jobs, files, Notebook resources, Slurm diagnostics, and Hygon DCU/DTK guidance.",
   "type": "module",
   "main": "./index.mjs",
