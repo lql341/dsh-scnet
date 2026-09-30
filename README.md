@@ -8,6 +8,14 @@ Current release: **0.6.0**
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.
 
+## What's new in 0.6.0
+
+- Added first-class DSH tools for submitting jobs, inspecting job status, reading logs, and
+  cancelling jobs through the existing SSH/OpenAPI backends.
+- Added dry-run support and one-missing-decision-at-a-time validation for job lifecycle calls.
+- Job submission reports the authoritative work directory and log paths; OpenAPI log lookup can
+  derive `std.out` and `std.err` paths from `job_id` and `work_dir`.
+
 ## Requirements
 
 - Node.js 22.19 or later
@@ -92,6 +100,13 @@ Do not maintain the generated directory independently. The sync excludes the can
 Release order is canonical-to-downstream: update `scnet-hpc/VERSION` first; its CI then
 synchronizes the skill and version into `dsh-scnet` and `codex-scnet-hpc`. Publish the matching
 `dsh-scnet` npm package only after that downstream change is reviewed.
+
+For a synchronized release, run the package validation on `main`, then trigger the repository's
+`Publish DSH-SCNet` workflow with the exact value from `package.json` (currently `0.6.0`). The
+workflow verifies the package/Skill version match, runs validation, creates the tarball, publishes
+stable releases with the `latest` tag, and creates the matching Git tag. Do not bump only
+`package.json`: `skills/scnet-hpc/VERSION`, the package version, and both README release markers
+must stay aligned.
 
 ## Validation
 

@@ -8,6 +8,13 @@
 
 > 本项目是独立维护的社区项目，与 DeepSeek Harness 兼容，但不是 DeepSeek 官方产品，也不表示 DeepSeek 对本项目提供背书、合作或授权。
 
+## 0.6.0 更新
+
+- 新增作业提交、状态查询、日志读取和取消作业的 DSH 工具，复用现有 SSH/OpenAPI backend。
+- 作业生命周期调用支持 `dry_run`，并按 CLI 顺序一次只提示一个缺失决策。
+- 提交结果返回权威的工作目录和日志路径；OpenAPI 日志查询支持由 `job_id` 和 `work_dir`
+  推导 `std.out`、`std.err` 路径。
+
 ## 这是什么
 
 一个 DeepSeek Harness bundle 插件，把 `scnet-hpc` 的 Agent Skill 和 bash 脚本包装成 DSH 可安装包。装好后 DSH 模型在涉及超算集群、Slurm 作业、海光 DCU/DTK 时会加载对应 skill，并可调用工具完成确定性操作。
@@ -108,6 +115,12 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 发布顺序也是从 canonical 向下游流转：先在 `scnet-hpc` 修改并发布 `VERSION`，其 CI
 再把 Skill 内容和版本同步到 `dsh-scnet` 与 `codex-scnet-hpc`。下游变更审核通过后，
 才能发布对应版本的 `dsh-scnet` npm 包。
+
+下游同步合并到 `main` 后，先运行本地校验，再手动触发仓库的 `Publish DSH-SCNet` workflow，
+输入 `package.json` 中的精确版本（当前为 `0.6.0`）。workflow 会校验 package 与 Skill
+版本一致，执行验证、生成 tarball、以稳定版 `latest` 标签发布，并创建对应 Git tag。
+不要只修改 `package.json`；`skills/scnet-hpc/VERSION`、package 版本和两份 README 的版本
+标记必须保持一致。
 
 ## 隐私与安全
 
