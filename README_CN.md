@@ -4,9 +4,15 @@
 
 <p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）：配置 SSH、管理 Slurm 作业、查询 OpenAPI 区域和文件、检查 Notebook 资源与实例，并保留海光 DCU/DTK 诊断能力。</p>
 
-当前版本：**0.6.2**
+当前版本：**0.6.3**
 
 > 本项目是独立维护的社区项目，与 DeepSeek Harness 兼容，但不是 DeepSeek 官方产品，也不表示 DeepSeek 对本项目提供背书、合作或授权。
+
+## 0.6.3 更新
+
+- 新增只读账户摘要、资源摘要和有界等待作业工具 `scnet_job_wait`。
+- 提交前队列预检失败会停止提交，不再静默选择队列。
+- 下载时可省略本地路径自动使用远端文件名；普通上传和分片上传返回统一结果结构。
 
 ## 0.6.2 更新
 
@@ -71,11 +77,14 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 | scnet_run_compute_probe | 在计算节点运行最小能力探针 |
 | scnet_status | 只读查看 backend、SSH profile 和 OpenAPI 配置 |
 | scnet_openapi_regions | 列出授权 OpenAPI 区域，不暴露 token |
+| scnet_account_summary | 查询账户状态和余额 |
+| scnet_resource_summary | 汇总区域队列和资源限制 |
 | scnet_job_queues | 查询区域 Slurm 队列和实时空闲资源 |
 | scnet_job_list | 紧凑列出当前或历史作业 |
 | scnet_limits | 查询用户和调度器资源限制 |
 | scnet_submit_job | 通过 OpenAPI 或 SSH 提交作业；dry_run=true 只预览请求 |
 | scnet_job_show | 查询单个作业的状态、资源与日志路径 |
+| scnet_job_wait | 在限定时间内等待作业进入终态 |
 | scnet_job_logs | 按显式 path，或按 job_id + work_dir 读取作业日志 |
 | scnet_job_cancel | 取消作业；dry_run=true 只预览请求 |
 | scnet_file_list | 通过通用文件 API 列出共享存储 |
@@ -132,7 +141,7 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 才能发布对应版本的 `dsh-scnet` npm 包。
 
 下游同步合并到 `main` 后，先运行本地校验，再手动触发仓库的 `Publish DSH-SCNet` workflow，
-输入 `package.json` 中的精确版本（当前为 `0.6.2`）。workflow 会校验 package 与 Skill
+输入 `package.json` 中的精确版本（当前为 `0.6.3`）。workflow 会校验 package 与 Skill
 版本一致，执行验证、生成 tarball、以稳定版 `latest` 标签发布，并创建对应 Git tag。
 不要只修改 `package.json`；`skills/scnet-hpc/VERSION`、package 版本和两份 README 的版本
 标记必须保持一致。

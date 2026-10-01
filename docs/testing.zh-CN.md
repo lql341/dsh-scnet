@@ -60,12 +60,15 @@ DEEPSEEK_API_KEY: sk-你的key
 | 7 | 用 scnet_run_compute_probe 跑计算节点探针 | 返回 PROBE_ 结果 | 高（提交作业并等待） |
 | 8 | 用 scnet_status 查看当前配置 | 返回脱敏配置 | 只读 |
 | 9 | 用 scnet_openapi_regions 查看授权区域 | 返回区域且不含 token | 只读 |
+| 9a | 用 scnet_account_summary 查看账户摘要 | 返回账户状态和余额 | 只读 |
+| 9b | 用 scnet_resource_summary 查看资源摘要 | 返回队列和资源限制 | 只读 |
 | 10 | 用 scnet_job_queues 查看昆山队列 | 返回实时队列和空闲资源 | 只读 |
 | 11 | 用 scnet_job_list 列出当前或历史作业 | 返回紧凑作业记录 | 只读 |
 | 12 | 用 scnet_limits 查询资源限制 | 返回用户和调度器限制 | 只读 |
 | 13 | 用 scnet_submit_job（dry_run=true）预览一次提交 | 返回将要发送的请求，不真正提交 | 只读（dry_run） |
 | 14 | 用 scnet_submit_job 提交一个 5 秒小作业 | 返回 job_id、作业目录与日志路径 | 高（会消耗配额） |
 | 15 | 用 scnet_job_show 查该 job_id | 返回状态与 stdout/stderr 路径 | 只读 |
+| 15a | 用 scnet_job_wait 等待作业终态 | 最多等待限定时间并返回状态 | 只读 |
 | 16 | 用 scnet_job_logs 读该作业日志 | 返回日志内容（同时验证 path 与 job_id+work_dir 两种模式结果一致） | 只读 |
 | 17 | 用 scnet_job_cancel 取消一个作业 | 建议先用 dry_run=true 预览 | 高（变更） |
 | 18 | 用 scnet_file_list 查看默认目录 | 返回共享存储文件 | 只读 |

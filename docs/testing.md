@@ -39,11 +39,14 @@ Confirm that the composed configuration includes:
 | `scnet_generate_job` | Writes a profile-aware Slurm script in the current directory |
 | `scnet_status` | Returns redacted local SCNet configuration |
 | `scnet_openapi_regions` | Returns authorized regions without tokens |
+| `scnet_account_summary` | Returns account status and balance |
+| `scnet_resource_summary` | Returns queues and resource limits for a region |
 | `scnet_job_queues` | Returns live regional Slurm queues |
 | `scnet_job_list` | Lists active or historical jobs |
 | `scnet_limits` | Returns user and scheduler resource limits |
 | `scnet_submit_job` | Submits a job through OpenAPI or SSH; `dry_run=true` returns the pending request only |
 | `scnet_job_show` | Returns one job's state, resources, and log paths |
+| `scnet_job_wait` | Waits for a job to reach a terminal state with a bounded timeout |
 | `scnet_job_logs` | Reads job logs by explicit path, or by `job_id` + `work_dir` |
 | `scnet_job_cancel` | Cancels one job; `dry_run=true` returns the pending request only |
 | `scnet_file_list` | Lists shared-storage files without modification |

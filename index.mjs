@@ -182,6 +182,16 @@ function errorTextFrom(res) {
   return matched ? matched[1].trim() : raw
 }
 
+function errorCodeFrom(res) {
+  const raw = String(res.stdout || '').trim() || String(res.stderr || '').trim()
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed.error_code === 'string' ? parsed.error_code : ''
+  } catch {
+    return ''
+  }
+}
+
 // 一次只给一条可执行的提示（不展示整套参数清单）
 function translateScnetError(text) {
   const value = String(text || '')
@@ -203,14 +213,23 @@ function translateScnetError(text) {
   return value
 }
 
+function translateScnetFailure(res) {
+  const code = errorCodeFrom(res)
+  if (code === 'AUTHENTICATION_FAILED') return 'SCNet 认证失败：请检查 OpenAPI 配置或重新运行 setup。'
+  if (code === 'QUEUE_QUERY_FAILED') return '队列查询失败，已停止提交；请先检查区域、调度器和凭据。'
+  if (code === 'NO_QUEUE_AVAILABLE') return '当前资源条件下没有可用队列，请调整资源或选择其他区域。'
+  if (code === 'NETWORK_TIMEOUT') return 'SCNet 请求超时：请稍后重试；提交/取消类操作不要盲目重试。'
+  return translateScnetError(errorTextFrom(res))
+}
+
 function scnetJobResult(res, action) {
   if (res.ok) return res.stdout.trim() || '{}'
-  return `${action}失败（exit ${res.code}）：\n${translateScnetError(errorTextFrom(res))}`
+  return `${action}失败（exit ${res.code}）：\n${translateScnetFailure(res)}`
 }
 
 async function runScnetEnvelope(argv) {
   const res = await runScnet(argv)
-  if (!res.ok) return { ok: false, error: translateScnetError(errorTextFrom(res)) }
+  if (!res.ok) return { ok: false, error: translateScnetFailure(res) }
   try {
     const parsed = JSON.parse(res.stdout)
     return { ok: true, envelope: parsed, data: parsed?.data }
@@ -236,22 +255,18 @@ function queueCandidates(queues, wantsAccelerator) {
     .sort((a, b) => Number(b?.free_nodes ?? 0) - Number(a?.free_nodes ?? 0))
 }
 
-// best-effort 队列预检：查得到就校验，查不到不阻塞提交
+// 提交前队列预检：查询失败或空结果都必须阻止提交，不能把失败当成可提交。
 async function precheckQueue(target, args) {
   const check = await runScnetEnvelope([...target.argv, 'queues'])
-  if (!check.ok) return { note: `队列预检已跳过（${check.error}）` }
+  if (!check.ok) return { error: `队列查询失败，已停止提交：${check.error}` }
   const queues = Array.isArray(check.data) ? check.data : []
-  if (queues.length === 0) return { note: '队列预检已跳过（该区域没有返回队列信息）' }
+  if (queues.length === 0) return { error: '队列查询成功但没有可用队列，已停止提交。' }
 
   const queue = String(args.queue ?? '').trim()
   const dcus = Number(String(args.dcus ?? '').trim() || 0)
 
   if (!queue) {
     const candidates = queueCandidates(queues, dcus > 0)
-    if (candidates.length === 1) {
-      const only = candidates[0]
-      return { queue: String(only.partition), note: `已自动选择队列 ${only.partition}` }
-    }
     if (candidates.length > 1) {
       const best = candidates[0]
       return {
@@ -260,7 +275,10 @@ async function precheckQueue(target, args) {
           `按你要的资源建议 ${best.partition}（空闲 ${best.free_nodes} 节点）。`,
       }
     }
-    return {}
+    if (candidates.length === 1) {
+      return { error: `请确认 queue：当前唯一可用队列是 ${candidates[0].partition}（不会自动选择计费队列）。` }
+    }
+    return { error: '没有找到匹配当前资源需求的可用队列。' }
   }
 
   const hit = queues.find((item) => String(item?.partition) === queue)
@@ -344,6 +362,51 @@ export function apply(ctx) {
           await runScnet(['--backend', 'openapi', 'clusters']),
           '查询 OpenAPI 区域',
         )
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_account_summary',
+      description:
+        '只读查询当前 SCNet 账户摘要，包括用户名、账户状态、余额、默认区域和区域信息；不需要额外参数。',
+      parameters: {},
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute() {
+        return scnetResult(
+          await runScnet(['--backend', 'openapi', 'account']),
+          '查询账户摘要',
+        )
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
+      name: 'scnet_resource_summary',
+      description:
+        '只读汇总目标区域的队列、空闲资源和用户资源限制；region 可省略，后端会使用默认区域。',
+      parameters: {
+        region: { type: 'string', description: '区域名称或 ID；省略时使用默认区域' },
+        scheduler_id: { type: 'string', description: '调度器 ID；多调度器时填写' },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const argv = [
+          '--backend',
+          'openapi',
+          ...regionArgs(args.region),
+          ...(args.scheduler_id ? ['--scheduler-id', String(args.scheduler_id)] : []),
+          'resource-summary',
+        ]
+        return scnetResult(await runScnet(argv), '查询资源摘要')
       },
     }),
   )
@@ -604,6 +667,43 @@ export function apply(ctx) {
 
   ctx.tools.register(
     defineTool({
+      name: 'scnet_job_wait',
+      description:
+        '只读等待一个作业进入终态。默认最多等待 300 秒、每 10 秒查询一次；不会提交、取消或自动重试作业。',
+      parameters: {
+        job_id: { type: 'string', required: true, description: '作业号' },
+        backend: { type: 'string', description: 'openapi（默认）或 ssh' },
+        region: { type: 'string', description: 'OpenAPI 区域；省略时使用默认区域' },
+        scheduler_id: { type: 'string', description: 'OpenAPI 调度器 ID；多调度器时填写' },
+        cluster: { type: 'string', description: 'SSH 集群短名；多个 profile 时必须指定' },
+        wait_timeout: { type: 'number', description: '最长等待秒数，默认 300，最大 600' },
+        interval: { type: 'number', description: '查询间隔秒数，默认 10，范围 1-60' },
+      },
+      timeoutMs: 660000,
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => textBlock(value),
+      },
+      async execute(args) {
+        const jobId = String(args.job_id ?? '').trim()
+        if (!jobId) return MISSING_HINTS.job_id
+        const target = await resolveTarget(args)
+        if (target.error) return target.error
+        const argv = [...target.argv, 'wait', jobId]
+        for (const [flag, key] of [['--wait-timeout', 'wait_timeout'], ['--interval', 'interval']]) {
+          if (args[key] !== undefined) {
+            const checked = positiveInt(args[key], key)
+            if (checked?.error) return checked.error
+            argv.push(flag, checked.value)
+          }
+        }
+        return scnetJobResult(await runScnet(argv, 660000), '等待作业')
+      },
+    }),
+  )
+
+  ctx.tools.register(
+    defineTool({
       name: 'scnet_job_logs',
       description:
         '只读读取作业日志。两种模式：显式给 path（远端绝对路径，SSH 下只能用这个）；或给 job_id + work_dir + stream，内部按平台默认命名 std.out/std.err.{job_id} 推导。path 优先。',
@@ -706,7 +806,7 @@ export function apply(ctx) {
         '在本地与 SCNet 区域共享存储之间传输一个文件。direction=upload 或 download；upload 的 remote_dir 是目录而不是文件名。默认不覆盖，执行前应确认区域和路径，dry_run=true 只预览。',
       parameters: {
         direction: { type: 'string', required: true, description: 'upload 或 download' },
-        local_path: { type: 'string', required: true, description: '本地文件路径' },
+        local_path: { type: 'string', description: '本地文件路径；download 省略时使用远端文件名' },
         remote_dir: { type: 'string', description: 'upload 时必填：区域共享存储中的绝对目录；文件名由 local_path 保留' },
         remote_path: { type: 'string', description: 'download：区域共享存储中的绝对文件路径' },
         backend: { type: 'string', description: 'openapi（默认）或 ssh' },
@@ -727,7 +827,7 @@ export function apply(ctx) {
         const localPath = String(args.local_path ?? '').trim()
         const remoteDir = String(args.remote_dir ?? '').trim()
         const remotePath = String(args.remote_path ?? '').trim()
-        if (!localPath) return '缺少必填参数 local_path。'
+        if (direction === 'upload' && !localPath) return '缺少必填参数 local_path。'
         if (direction === 'upload' && !remoteDir) return '缺少必填参数 remote_dir（目录，不是文件名）。'
         if (direction === 'download' && !remotePath) return '缺少必填参数 remote_path。'
         const target = await resolveTarget(args)
@@ -737,7 +837,8 @@ export function apply(ctx) {
         if (direction === 'upload') {
           argv.push('upload', localPath, remoteDir)
         } else {
-          argv.push('download', remotePath, localPath)
+          argv.push('download', remotePath)
+          if (localPath) argv.push(localPath)
         }
         if (args.overwrite === true) argv.push('--cover')
         return scnetResult(
@@ -1067,6 +1168,7 @@ export const __testables = {
   MISSING_HINTS,
   SUBMIT_REQUIRED_ORDER,
   errorTextFrom,
+  errorCodeFrom,
   firstMissingRequired,
   parseWalltimeSeconds,
   pickBackend,

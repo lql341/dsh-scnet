@@ -92,6 +92,8 @@ class OpenAPIBackend(Backend):
             "clusters",
             "queues",
             "limits",
+            "account",
+            "resource-summary",
             "job",
             "jobs",
             "logs",
@@ -350,6 +352,37 @@ class OpenAPIBackend(Backend):
         }
         result = {target: data.get(source) for source, target in key_map.items()}
         return {"data": result, "raw": data} if options.get("raw") else result
+
+    def op_account(self, options: Mapping[str, Any]) -> Any:
+        _, token, region = self._center(options)
+        url = self._env(
+            "SCNET_OPENAPI_USER_URL",
+            "https://www.scnet.cn/ac/openapi/v2/user",
+        )
+        data = self._json_request("GET", url, token=token)
+        if not isinstance(data, dict):
+            raise BackendError("user endpoint returned an unexpected data shape")
+        result = {
+            "user": data.get("userName"),
+            "account_name": data.get("accountName"),
+            "account_status": data.get("accountStatus"),
+            "balance": data.get("accountBalance"),
+            "computer_center": data.get("computerCenter"),
+            "region_id": region.get("clusterId"),
+            "region_name": region.get("clusterName"),
+        }
+        return {"data": result, "raw": data} if options.get("raw") else result
+
+    def op_resource_summary(self, options: Mapping[str, Any]) -> Any:
+        _, _, region = self._center(options)
+        queues = self.op_queues(options)
+        limits = self.op_limits(options)
+        return {
+            "region_id": region.get("clusterId"),
+            "region_name": region.get("clusterName"),
+            "queues": queues,
+            "limits": limits,
+        }
 
     def op_job(self, options: Mapping[str, Any]) -> Any:
         job_id = str(require_option(options, "job_id"))

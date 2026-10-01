@@ -8,6 +8,7 @@ const {
   MISSING_HINTS,
   SUBMIT_REQUIRED_ORDER,
   errorTextFrom,
+  errorCodeFrom,
   firstMissingRequired,
   parseWalltimeSeconds,
   pickBackend,
@@ -60,6 +61,14 @@ test('errorTextFrom 能从 --json 错误信封里取出 error', () => {
     'missing required option: command',
   )
   assert.equal(errorTextFrom({ ok: false, stdout: '', stderr: 'error: boom' }), 'boom')
+})
+
+test('errorCodeFrom 能读取结构化错误类别', () => {
+  assert.equal(
+    errorCodeFrom({ stdout: JSON.stringify({ error_code: 'NETWORK_TIMEOUT' }) }),
+    'NETWORK_TIMEOUT',
+  )
+  assert.equal(errorCodeFrom({ stdout: 'plain error' }), '')
 })
 
 test('译错：缺失参数一次只给一条可执行提示', () => {
