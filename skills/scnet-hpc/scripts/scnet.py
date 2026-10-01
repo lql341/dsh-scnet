@@ -15,6 +15,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -120,8 +121,18 @@ def build_parser() -> argparse.ArgumentParser:
     limits = subparsers.add_parser("limits", help="show scheduler or user resource limits")
     limits.add_argument("--partition")
 
+    account = subparsers.add_parser("account", help="show account summary")
+    resource_summary = subparsers.add_parser(
+        "resource-summary", help="show region resources and limits"
+    )
+
     job = subparsers.add_parser("job", help="show one job")
     job.add_argument("job_id")
+
+    wait = subparsers.add_parser("wait", help="wait for one job to reach a terminal state")
+    wait.add_argument("job_id")
+    wait.add_argument("--wait-timeout", type=int, default=300)
+    wait.add_argument("--interval", type=int, default=10)
 
     jobs = subparsers.add_parser("jobs", help="list active or historical jobs")
     jobs.add_argument("--scope", choices=("active", "history"), default="active")
@@ -192,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     download = subparsers.add_parser("download", help="download one file or folder")
     download.add_argument("remote_path")
-    download.add_argument("local_path")
+    download.add_argument("local_path", nargs="?")
     download.add_argument("--cover", action="store_true")
 
     execute = subparsers.add_parser("exec", help="run an SSH command")
@@ -223,6 +234,68 @@ def compact_output(operation: str, data: Any) -> str:
     if operation == "exec" and isinstance(data, dict):
         return str(data.get("stdout") or "")
     return json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def _job_terminal(state: Any) -> bool:
+    value = str(state or "").upper()
+    return value in {
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED",
+        "TIMEOUT",
+        "NODE_ERROR",
+        "ABNORMAL",
+        "EXITING",
+        "EXITED",
+        "DONE",
+        "OUT_OF_MEMORY",
+        "NODE_FAIL",
+    }
+
+
+def wait_for_job(backend, options: Mapping[str, Any]) -> dict[str, Any]:
+    timeout = int(options.get("wait_timeout") or 300)
+    interval = int(options.get("interval") or 10)
+    if timeout < 1 or timeout > 600:
+        raise BackendError("wait_timeout must be between 1 and 600 seconds")
+    if interval < 1 or interval > 60:
+        raise BackendError("interval must be between 1 and 60 seconds")
+    started = time.monotonic()
+    while True:
+        latest = backend.execute("job", options)
+        if isinstance(latest, dict) and _job_terminal(latest.get("state")):
+            latest["waited_seconds"] = round(time.monotonic() - started, 1)
+            latest["timed_out"] = False
+            return latest
+        elapsed = time.monotonic() - started
+        if elapsed >= timeout:
+            return {
+                "job": latest,
+                "waited_seconds": round(elapsed, 1),
+                "timed_out": True,
+            }
+        time.sleep(min(interval, timeout - elapsed))
+
+
+def error_code_for(text: str) -> str:
+    value = str(text).lower()
+    if "credentials are not configured" in value or "token" in value and "expired" in value:
+        return "AUTHENTICATION_FAILED"
+    if "region" in value and ("not available" in value or "missing" in value):
+        return "REGION_NOT_FOUND"
+    if "scheduler" in value and ("not available" in value or "multiple" in value):
+        return "SCHEDULER_NOT_FOUND"
+    if "queue" in value and ("not found" in value or "no available" in value):
+        return "QUEUE_QUERY_FAILED"
+    if "job" in value and ("not found" in value or "no job record" in value):
+        return "JOB_NOT_FOUND"
+    if "already exists" in value:
+        return "FILE_TARGET_EXISTS"
+    if "does not exist" in value or "not found" in value and "file" in value:
+        return "FILE_NOT_FOUND"
+    if "timed out" in value or "timeout" in value:
+        return "NETWORK_TIMEOUT"
+    return "BACKEND_ERROR"
 
 
 def _ask(prompt: str, default: str = "") -> str:
@@ -1506,6 +1579,9 @@ def main(argv: list[str] | None = None) -> int:
             openapi_config = user_config.get("openapi", {})
             if isinstance(openapi_config, dict):
                 apply_openapi_defaults(options, openapi_config)
+            if args.operation == "download" and not options.get("local_path"):
+                remote_path = str(options.get("remote_path") or "").rstrip("/")
+                options["local_path"] = remote_path.rsplit("/", 1)[-1] or "download"
             if args.operation == "notebook":
                 if backend_name != "openapi":
                     raise BackendError(
@@ -1532,6 +1608,8 @@ def main(argv: list[str] | None = None) -> int:
                     "name": backend.name,
                     "capabilities": sorted(backend.capabilities),
                 }
+            elif args.operation == "wait":
+                data = wait_for_job(backend, options)
             elif args.operation == "exec":
                 options["command"] = " ".join(args.command).strip()
                 data = backend.execute(args.operation, options)
@@ -1564,6 +1642,7 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "ok": False,
                         "operation": args.operation,
+                        "error_code": error_code_for(str(exc)),
                         "error": str(exc),
                     },
                     ensure_ascii=False,

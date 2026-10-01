@@ -128,6 +128,20 @@ python3 scripts/scnet.py --backend openapi --region <id> \
 `job <job-id>` checks the realtime endpoint first and automatically falls back to the filtered
 history-list endpoint. The caller does not need to provide `acctTime`.
 
+Account and resource summaries are read-only:
+
+```bash
+python3 scripts/scnet.py --backend openapi --region <id> account
+python3 scripts/scnet.py --backend openapi --region <id> resource-summary
+```
+
+Wait for a job with a bounded timeout:
+
+```bash
+python3 scripts/scnet.py --backend openapi --region <id> \
+  wait <job-id> --wait-timeout 300 --interval 10
+```
+
 Region tokens are cached under `${XDG_CACHE_HOME:-~/.cache}/scnet-hpc` when that location is
 writable. Cache locking or writes are best-effort; an unavailable cache never blocks an OpenAPI
 operation.
