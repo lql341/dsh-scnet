@@ -142,7 +142,7 @@ Triton 是多种推理框架的运行前提；不可用时，对应的 Triton �
 
 | 字段 | 谁用 | 留空的后果 |
 |---|---|---|
-| `DEFAULT_BACKEND` | `scnet.py` | 默认使用 `ssh` |
+| `DEFAULT_BACKEND` | `scnet.py` | 默认使用 `openapi` |
 | `OPENAPI_REGION_ID` | OpenAPI backend | 多区域账户需要每次显式传 `--region` |
 | `OPENAPI_SCHEDULER_ID` | OpenAPI backend | 多调度器区域需要每次显式传 `--scheduler-id` |
 | `MIN_GRES` | 文档提示 | 不提示 QOS 强制申请加速器 |

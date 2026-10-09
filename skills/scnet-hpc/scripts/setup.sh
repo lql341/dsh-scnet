@@ -345,7 +345,7 @@ case "$(uname -s)" in
             && grep -Eq '^ID=(ubuntu|debian)$' /etc/os-release; then
             printf '%s\n' \
                 "Ubuntu/Debian：在 Terminal 中使用 ↑/↓ 和 Enter，也可输入编号；Ctrl+C 可取消。" \
-                "如需安全保存 AK/SK：sudo apt install libsecret-tools" >&2
+                "本机安全保存 AK/SK 可安装 libsecret-tools（sudo apt install libsecret-tools）；使用环境变量时无需安装。" >&2
         else
             printf '%s\n' "Linux：使用 ↑/↓ 和 Enter，也可输入编号；Ctrl+C 可取消。" >&2
         fi
@@ -382,12 +382,12 @@ fi
 
 if [ -z "$BACKEND" ]; then
     BACKEND=$(choose "选择要管理的 backend：" \
+        "openapi（推荐：平台级 AK/SK 和多区域）" \
         "ssh（区域级用户名和私钥）" \
-        "openapi（平台级 AK/SK 和多区域）" \
         "both（同时管理）")
     case "$BACKEND" in
-        ssh*) BACKEND=ssh ;;
         openapi*) BACKEND=openapi ;;
+        ssh*) BACKEND=ssh ;;
         both*) BACKEND=both ;;
     esac
 fi
@@ -429,7 +429,7 @@ fi
 
 DEFAULT_BACKEND="$BACKEND"
 if [ "$BACKEND" = both ]; then
-    DEFAULT_BACKEND=$(choose "选择默认 backend：" "ssh" "openapi")
+    DEFAULT_BACKEND=$(choose "选择默认 backend：" "openapi" "ssh")
 fi
 
 if [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; then

@@ -32,7 +32,8 @@ List available access backends:
 python3 scripts/scnet.py backends
 ```
 
-SSH is the default. Use OpenAPI for structured queue, limit, job, log, and file operations:
+OpenAPI with AK/SK is the preferred default for structured queue, limit, job, log, and file
+operations. Use SSH for environment setup and interactive shell work:
 
 ```bash
 python3 scripts/scnet.py --backend openapi clusters
