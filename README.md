@@ -4,7 +4,12 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.4**
+Current release: **0.6.5**
+
+## What's new in 0.6.4
+
+- OpenAPI with AK/SK is preferred for structured cluster operations; SSH remains available for environment setup, compilation, and interactive diagnosis.
+- Ubuntu/Debian users can install `libsecret-tools` for secure local credential storage; it is optional when credentials are provided through environment variables.
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.
 
@@ -130,7 +135,7 @@ synchronizes the skill and version into `dsh-scnet` and `codex-scnet-hpc`. Publi
 `dsh-scnet` npm package only after that downstream change is reviewed.
 
 For a synchronized release, run the package validation on `main`, then trigger the repository's
-`Publish DSH-SCNet` workflow with the exact value from `package.json` (currently `0.6.3`). The
+`Publish DSH-SCNet` workflow with the exact current version from `package.json`. The
 workflow verifies the package/Skill version match, runs validation, creates the tarball, publishes
 stable releases with the `latest` tag, and creates the matching Git tag. Do not bump only
 `package.json`: `skills/scnet-hpc/VERSION`, the package version, and both README release markers
