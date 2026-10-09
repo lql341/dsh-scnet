@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--backend",
         help=(
             "backend name; defaults to SCNET_HPC_BACKEND, saved setup choice, "
-            "profile DEFAULT_BACKEND, then ssh"
+            "profile DEFAULT_BACKEND, then openapi"
         ),
     )
     parser.add_argument("--cluster", help="local cluster profile name")
@@ -220,7 +220,7 @@ def choose_backend(
         or os.environ.get("SCNET_HPC_BACKEND")
         or str(user_config.get("default_backend") or "")
         or profile.get("DEFAULT_BACKEND")
-        or "ssh"
+        or "openapi"
     )
 
 
@@ -943,14 +943,14 @@ def setup_panel(
     print("自动探测区域、调度器和 SSH 元数据；只要求输入必要凭据。\n")
     _print_terminal_help()
 
-    current_default = str(current.get("default_backend") or "ssh")
+    current_default = str(current.get("default_backend") or "openapi")
     if mode == "all":
         backend = _choose(
             "选择默认 backend：",
-            ["SSH（推荐，支持环境和深度诊断）", "OpenAPI（结构化控制面）"],
-            1 if current_default == "ssh" else 2,
+            ["OpenAPI（推荐，结构化控制面）", "SSH（环境配置和深度诊断）"],
+            1 if current_default == "openapi" else 2,
         )
-        default_backend = "ssh" if backend.startswith("SSH") else "openapi"
+        default_backend = "openapi" if backend.startswith("OpenAPI") else "ssh"
         configure_ssh = _ask_yes_no(
             "是否添加或更新一个 SSH 区域？", default=default_backend == "ssh"
         )

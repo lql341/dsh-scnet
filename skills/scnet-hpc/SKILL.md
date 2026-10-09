@@ -5,8 +5,9 @@ description: Configure or operate SCNet HPC through SSH, OpenAPI, and pluggable 
 
 # SCNet HPC
 
-Use the selected backend, cluster profile, and target-cluster evidence. SSH is the default;
-OpenAPI is the structured control plane. Never silently switch backends.
+Use OpenAPI AK/SK as the preferred backend for structured cluster operations. Keep SSH as the
+secondary backend for environment setup, compilation, interactive diagnosis, and operations not
+available through the API. Never silently switch backends.
 
 ## First use and selection
 
@@ -14,7 +15,7 @@ OpenAPI is the structured control plane. Never silently switch backends.
 - Advanced OpenAPI discovery: `python3 scripts/scnet.py setup`.
 - Read-only preflight: `python3 scripts/scnet.py doctor`.
 - Backend precedence: `--backend`, `SCNET_HPC_BACKEND`, saved setup choice, profile
-  `DEFAULT_BACKEND`, then `ssh`.
+  `DEFAULT_BACKEND`, then `openapi`.
 - Read `clusters/<cluster>.conf` before reporting static facts. Treat
   `clusters/.cache/<cluster>.auto.conf` as optional, time-sensitive SSH probe data.
 - With multiple profiles, require an explicit cluster before access changes, installation,

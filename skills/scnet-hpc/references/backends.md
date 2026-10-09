@@ -12,7 +12,7 @@ Backend precedence:
 2. `SCNET_HPC_BACKEND`;
 3. saved setup-panel `default_backend`;
 4. selected profile `DEFAULT_BACKEND`;
-5. `ssh`.
+5. `openapi`.
 
 Do not silently fall back between backends. A failed OpenAPI request must not become an SSH
 submission, and a failed SSH command must not be replayed through OpenAPI. Replaying mutations
@@ -39,7 +39,7 @@ Built-in capability summary:
 | Modules, builds, interactive diagnosis | yes | no |
 | Notebook read-only discovery | no | yes |
 
-Use OpenAPI for structured control-plane work. Use SSH for environment setup, compilation,
+Use OpenAPI as the preferred structured control-plane backend. Use SSH for environment setup, compilation,
 interactive inspection, full scheduler tooling, and operations not represented by a structured
 backend.
 
@@ -168,7 +168,7 @@ until the official interface is available and verified.
 Profiles may contain non-secret backend hints:
 
 ```bash
-DEFAULT_BACKEND="ssh"
+DEFAULT_BACKEND="openapi"
 OPENAPI_REGION_ID=""
 OPENAPI_SCHEDULER_ID=""
 OPENAPI_USERNAME=""

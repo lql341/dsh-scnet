@@ -58,7 +58,7 @@ def list_profiles(repo_root: Path) -> list[dict[str, str]]:
                 "name": path.stem,
                 "cluster_id": profile.get("CLUSTER_ID", path.stem),
                 "description": profile.get("CLUSTER_DESC", ""),
-                "default_backend": profile.get("DEFAULT_BACKEND", "ssh"),
+                "default_backend": profile.get("DEFAULT_BACKEND", "openapi"),
             }
         )
     return result
