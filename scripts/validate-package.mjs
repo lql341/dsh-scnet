@@ -8,6 +8,7 @@ const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url
 const pycachePrefix = process.env.PYTHONPYCACHEPREFIX ?? mkdtempSync(join(tmpdir(), "dsh-scnet-pycache-"))
 if (!pkg.dsh?.bundle?.patch) throw new Error("package.json must declare dsh.bundle.patch")
 if (!pkg.files?.includes("skills")) throw new Error("package.json must ship skills/")
+if (!pkg.files?.includes("connector")) throw new Error("package.json must ship connector/")
 if (pkg.dsh.skills !== undefined) throw new Error("dsh.skills is not part of the rc.8 bundle manifest")
 if (pkg.dependencies?.["@deepseek-ai/dsh-tools"] !== undefined) {
   throw new Error("@deepseek-ai/dsh-tools must be a peer dependency so the Harness owns one tool runtime")
@@ -42,5 +43,13 @@ execFileSync("python3", ["-m", "py_compile",
   stdio: "inherit",
   env: { ...process.env, PYTHONPYCACHEPREFIX: pycachePrefix },
 })
-execFileSync("npm", ["pack", "--dry-run"], { stdio: "inherit" })
+const packResult = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json"], { encoding: "utf8" }))
+const packed = Array.isArray(packResult) ? packResult[0] : packResult[pkg.name]
+if (!packed?.files) throw new Error("npm pack did not return a package file list")
+const generatedPythonFiles = packed.files
+  .map(({ path }) => path)
+  .filter(path => path.includes("/__pycache__/") || path.endsWith(".pyc"))
+if (generatedPythonFiles.length > 0) {
+  throw new Error(`npm package contains generated Python files: ${generatedPythonFiles.join(", ")}`)
+}
 console.log(`validated ${pkg.name}@${pkg.version}`)

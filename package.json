@@ -6,6 +6,7 @@
   "main": "./index.mjs",
   "exports": {
     ".": "./index.mjs",
+    "./connector": "./connector/index.mjs",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -26,8 +27,11 @@
   },
   "files": [
     "index.mjs",
+    "connector",
     "cordis.patch.yml",
     "skills",
+    "!skills/**/__pycache__",
+    "!skills/**/*.pyc",
     "docs",
     "README_CN.md",
     "README.md",
