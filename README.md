@@ -4,44 +4,20 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.5**
+Current release: **0.6.6**
 
-## What's new in 0.6.4
+<!-- scnet-release:start -->
+## 0.6.6 highlights
 
-- OpenAPI with AK/SK is preferred for structured cluster operations; SSH remains available for environment setup, compilation, and interactive diagnosis.
-- Ubuntu/Debian users can install `libsecret-tools` for secure local credential storage; it is optional when credentials are provided through environment variables.
+- README release highlights now come from one canonical source and replace the previous release
+  block instead of accumulating a version-by-version timeline.
+- The canonical Skill and Codex Plugin now create Git tags and GitHub Releases automatically after
+  validation.
+- The DSH distribution now publishes npm, its Git tag, and its GitHub Release automatically after
+  a synchronized version reaches `main`.
+<!-- scnet-release:end -->
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.
-
-## What's new in 0.6.3
-
-- Added read-only account and resource summaries plus bounded `scnet_job_wait`.
-- Submission queue preflight now fails closed and never silently selects a queue.
-- Download paths can default to the remote filename; ordinary and chunked uploads return the same
-  directory/filename result shape.
-
-## 0.6.2 highlights
-
-- Completed jobs now resolve through the fast filtered history-list endpoint rather than timing
-  out on the empty history-detail response.
-- Historical field aliases such as `workdir` are normalized for log-path discovery.
-- OpenAPI operations continue without persistent caching when the cache directory is read-only.
-
-## 0.6.1 highlights
-
-- Job details now fall back to the history endpoint when realtime records expire, with complete
-  normalized terminal states.
-- Added compact `scnet_job_list`, `scnet_limits`, and `scnet_file_transfer` tools.
-- File uploads now make the remote-directory contract explicit: the local filename is preserved
-  and must not be passed as the remote directory.
-
-## 0.6.0 highlights
-
-- Added first-class DSH tools for submitting jobs, inspecting job status, reading logs, and
-  cancelling jobs through the existing SSH/OpenAPI backends.
-- Added dry-run support and one-missing-decision-at-a-time validation for job lifecycle calls.
-- Job submission reports the authoritative work directory and log paths; OpenAPI log lookup can
-  derive `std.out` and `std.err` paths from `job_id` and `work_dir`.
 
 ## Requirements
 
@@ -130,16 +106,7 @@ The `skills/scnet-hpc/` directory is generated from the canonical `scnet-hpc` re
 
 Do not maintain the generated directory independently. The sync excludes the canonical installer and local probe cache because neither belongs in the npm runtime package.
 
-Release order is canonical-to-downstream: update `scnet-hpc/VERSION` first; its CI then
-synchronizes the skill and version into `dsh-scnet` and `codex-scnet-hpc`. Publish the matching
-`dsh-scnet` npm package only after that downstream change is reviewed.
-
-For a synchronized release, run the package validation on `main`, then trigger the repository's
-`Publish DSH-SCNet` workflow with the exact current version from `package.json`. The
-workflow verifies the package/Skill version match, runs validation, creates the tarball, publishes
-stable releases with the `latest` tag, and creates the matching Git tag. Do not bump only
-`package.json`: `skills/scnet-hpc/VERSION`, the package version, and both README release markers
-must stay aligned.
+Release order is canonical-to-downstream: update the canonical `VERSION` and release highlights once. CI synchronizes both distribution repositories. After each synchronized pull request passes validation, the workflow merges it automatically. The resulting `main` push validates and packs the bundle, publishes the npm package with the appropriate `latest` or `next` tag, and creates the matching Git tag and GitHub Release. Do not bump only `package.json`: the canonical `VERSION` remains the release source of truth.
 
 The workflow uses npm Trusted Publishing through GitHub OIDC, so account 2FA/Passkey should remain
 enabled and no long-lived `NPM_TOKEN` is required. Configure `lql341/dsh-scnet` and

@@ -1,12 +1,10 @@
 name: Publish DSH-SCNet
 
 on:
+  workflow_run:
+    workflows: ["Validate DSH-SCNet"]
+    types: [completed]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Merged package version, for example 0.4.2"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -18,12 +16,17 @@ concurrency:
 
 jobs:
   publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout DSH-SCNet
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -37,56 +40,76 @@ jobs:
           npm install --global npm@latest
           npm --version
 
-      - name: Verify release branch and version
-        env:
-          RELEASE_VERSION: ${{ github.event.inputs.version }}
+      - name: Verify synchronized version and release documents
+        id: preflight
         run: |
-          test "${GITHUB_REF_NAME}" = "main"
-          git fetch origin main --tags
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
-          test "$PACKAGE_VERSION" = "$RELEASE_VERSION"
-          if git rev-parse -q --verify "refs/tags/v${RELEASE_VERSION}" >/dev/null; then
-            echo "v${RELEASE_VERSION} already exists" >&2
-            exit 1
+          git fetch origin main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "A newer main commit exists; its validation run will publish the release."
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          if [[ "$RELEASE_VERSION" == *-* ]]; then
+          python3 .github/scripts/release_docs.py --check \
+            --version-file skills/scnet-hpc/VERSION
+          package_version="$(node -p 'require("./package.json").version')"
+          skill_version="$(tr -d '[:space:]' < skills/scnet-hpc/VERSION)"
+          test "$package_version" = "$skill_version"
+          if [[ "$package_version" == *-* ]]; then
             echo "NPM_TAG=next" >> "$GITHUB_ENV"
           else
             echo "NPM_TAG=latest" >> "$GITHUB_ENV"
           fi
+          echo "RELEASE_VERSION=$package_version" >> "$GITHUB_ENV"
+          echo "should-release=true" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
+        if: steps.preflight.outputs.should-release == 'true'
         run: npm install --no-package-lock --ignore-scripts
 
       - name: Validate package
+        if: steps.preflight.outputs.should-release == 'true'
         run: npm run validate
 
-      - name: Pack release artifact
-        env:
-          RELEASE_VERSION: ${{ github.event.inputs.version }}
+      - name: Pack and compare release artifact
+        if: steps.preflight.outputs.should-release == 'true'
         run: |
           mkdir -p .release
           npm pack --pack-destination .release/
-          RELEASE_TARBALL=".release/dsh-scnet-${RELEASE_VERSION}.tgz"
-          test -f "$RELEASE_TARBALL"
-          echo "RELEASE_TARBALL=$RELEASE_TARBALL" >> "$GITHUB_ENV"
-          LOCAL_INTEGRITY="$(npm pack --json --dry-run | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const value=JSON.parse(s); const item=Array.isArray(value) ? value[0] : value; console.log(item.integrity)})')"
-          PUBLISHED_INTEGRITY="$(npm view "dsh-scnet@${RELEASE_VERSION}" dist.integrity 2>/dev/null || true)"
-          if [ -n "$PUBLISHED_INTEGRITY" ]; then
-            test "$LOCAL_INTEGRITY" = "$PUBLISHED_INTEGRITY"
+          release_tarball=".release/dsh-scnet-${RELEASE_VERSION}.tgz"
+          test -f "$release_tarball"
+          echo "RELEASE_TARBALL=$release_tarball" >> "$GITHUB_ENV"
+          local_integrity="$(npm pack --json --dry-run | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const value=JSON.parse(s); const item=Array.isArray(value) ? value[0] : value; console.log(item.integrity)})')"
+          published_integrity="$(npm view "dsh-scnet@${RELEASE_VERSION}" dist.integrity 2>/dev/null || true)"
+          if [ -n "$published_integrity" ]; then
+            test "$local_integrity" = "$published_integrity"
             echo "SHOULD_PUBLISH=false" >> "$GITHUB_ENV"
           else
             echo "SHOULD_PUBLISH=true" >> "$GITHUB_ENV"
           fi
 
       - name: Publish to npm
-        if: env.SHOULD_PUBLISH == 'true'
+        if: >-
+          steps.preflight.outputs.should-release == 'true' &&
+          env.SHOULD_PUBLISH == 'true'
         run: npm publish "$RELEASE_TARBALL" --access public --tag "$NPM_TAG" --provenance
 
-      - name: Tag published release
+      - name: Create tag and GitHub Release
+        if: steps.preflight.outputs.should-release == 'true'
         env:
-          RELEASE_VERSION: ${{ github.event.inputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git tag "v${RELEASE_VERSION}"
-          git push origin "v${RELEASE_VERSION}"
+          tag="v${RELEASE_VERSION}"
+          git fetch origin --tags
+          if ! git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            git tag "$tag"
+            git push origin "$tag"
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "${tag} is already published"
+            exit 0
+          fi
+          args=(release create "$tag" --verify-tag --title "dsh-scnet ${tag}" --notes-file RELEASE_HIGHLIGHTS.md "$RELEASE_TARBALL")
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}"

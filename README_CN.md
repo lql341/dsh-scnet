@@ -4,39 +4,18 @@
 
 <p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）：配置 SSH、管理 Slurm 作业、查询 OpenAPI 区域和文件、检查 Notebook 资源与实例，并保留海光 DCU/DTK 诊断能力。</p>
 
-当前版本：**0.6.5**
+当前版本：**0.6.6**
 
-## 0.6.4 更新
+<!-- scnet-release:start -->
+## 0.6.6 更新
 
-- 结构化集群操作优先使用 OpenAPI AK/SK；环境配置、编译和交互式诊断仍可使用 SSH。
-- Ubuntu/Debian 可安装 `libsecret-tools` 安全保存本地凭据；通过环境变量提供 AK/SK 时无需安装。
+- README 的版本亮点改为由 canonical 单一来源生成；每次发布替换当前版本区块，不再逐版
+  堆叠成流水账。
+- canonical Skill 和 Codex Plugin 在校验通过后自动创建 Git tag 与 GitHub Release。
+- DSH 分发仓库在同步版本进入 `main` 后，自动完成 npm 发布、Git tag 和 GitHub Release。
+<!-- scnet-release:end -->
 
 > 本项目是独立维护的社区项目，与 DeepSeek Harness 兼容，但不是 DeepSeek 官方产品，也不表示 DeepSeek 对本项目提供背书、合作或授权。
-
-## 0.6.3 更新
-
-- 新增只读账户摘要、资源摘要和有界等待作业工具 `scnet_job_wait`。
-- 提交前队列预检失败会停止提交，不再静默选择队列。
-- 下载时可省略本地路径自动使用远端文件名；普通上传和分片上传返回统一结果结构。
-
-## 0.6.2 更新
-
-- 已结束作业改用快速的历史列表过滤查询，不再卡在返回空数据的历史详情接口。
-- 兼容历史记录中的 `workdir` 等字段变体，可继续推导日志路径。
-- 缓存目录只读时自动降级为无持久缓存，OpenAPI 主功能不再被缓存故障阻断。
-
-## 0.6.1 更新
-
-- 作业实时记录过期时自动回退历史接口，并补全终态映射。
-- 新增紧凑的 `scnet_job_list`、`scnet_limits`、`scnet_file_transfer` 工具。
-- 明确 OpenAPI 上传参数是远端目录，文件名沿用本地文件名，不能把文件名当作远端目录传入。
-
-## 0.6.0 更新
-
-- 新增作业提交、状态查询、日志读取和取消作业的 DSH 工具，复用现有 SSH/OpenAPI backend。
-- 作业生命周期调用支持 `dry_run`，并按 CLI 顺序一次只提示一个缺失决策。
-- 提交结果返回权威的工作目录和日志路径；OpenAPI 日志查询支持由 `job_id` 和 `work_dir`
-  推导 `std.out`、`std.err` 路径。
 
 ## 这是什么
 
@@ -141,15 +120,7 @@ git 源、本地目录安装以及验证步骤见[安装说明](./docs/installat
 只改 canonical，本仓库跑 sync 更新；不要把 `skills/scnet-hpc/` 当手工维护目录。
 `sync.sh` 会自动排除 `scripts/install.sh` 和 `clusters/.cache/`，避免把安装脚本或本机动态缓存打进发布包。
 
-发布顺序也是从 canonical 向下游流转：先在 `scnet-hpc` 修改并发布 `VERSION`，其 CI
-再把 Skill 内容和版本同步到 `dsh-scnet` 与 `codex-scnet-hpc`。下游变更审核通过后，
-才能发布对应版本的 `dsh-scnet` npm 包。
-
-下游同步合并到 `main` 后，先运行本地校验，再手动触发仓库的 `Publish DSH-SCNet` workflow，
-输入 `package.json` 中的当前版本。workflow 会校验 package 与 Skill
-版本一致，执行验证、生成 tarball、以稳定版 `latest` 标签发布，并创建对应 Git tag。
-不要只修改 `package.json`；`skills/scnet-hpc/VERSION`、package 版本和两份 README 的版本
-标记必须保持一致。
+发布只需在 canonical 仓库更新一次 `VERSION` 与版本亮点，CI 会同步两个分发仓库。下游同步 PR 校验通过后自动合并；合并产生的 `main` push 会校验并打包 bundle，以对应的 `latest` 或 `next` 标签发布 npm package，并创建匹配的 Git tag 与 GitHub Release。不要只修改 `package.json`；canonical `VERSION` 仍是唯一版本来源。
 
 该 workflow 使用 GitHub OIDC 的 npm Trusted Publishing，因此应保留账号的 2FA/Passkey，
 不需要长期保存 `NPM_TOKEN`。首次使用 OIDC 发布前，请在 npm package 设置中把
