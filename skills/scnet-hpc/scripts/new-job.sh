@@ -132,6 +132,7 @@ fi
 
 OUT="${NAME}.slurm"
 [ -e "$OUT" ] && die "$OUT 已存在"
+PYTHON_BIN="$(resolve_python)" || die "本机需要 Python 3；请设置 DSH_SCNET_PYTHON 或 SCNET_PYTHON"
 
 cat > "$OUT" <<EOF
 #!/bin/bash -l

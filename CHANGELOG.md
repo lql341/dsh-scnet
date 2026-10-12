@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.7 - 2026-10-12
+
+- Allow Desktop hosts to inject a verified Python 3 interpreter through
+  `DSH_SCNET_PYTHON` or `SCNET_PYTHON`; local scripts no longer require a `python3` command name.
+- Fall back to an available Python 3 command when no interpreter is injected, while rejecting
+  Python 2 and invalid configured paths.
+
 ## 0.6.6 - 2026-10-10
 
 - Generate one current-release README block from canonical English and Chinese highlight files,

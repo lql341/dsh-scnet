@@ -370,8 +370,8 @@ if [ -z "$ACTION" ]; then
 fi
 
 if [ "$ACTION" = status ] || [ "$ACTION" = reset ]; then
-    if command -v python3 >/dev/null 2>&1; then
-        exec python3 "$SCRIPT_DIR/scnet.py" setup "$ACTION"
+    if PYTHON_BIN="$(resolve_python)"; then
+        exec "$PYTHON_BIN" "$SCRIPT_DIR/scnet.py" setup "$ACTION"
     fi
     [ "$ACTION" = status ] || die "reset 需要 Python 3 以执行安全的分范围重置"
     config_root="${XDG_CONFIG_HOME:-$HOME/.config}/scnet-hpc"
@@ -450,16 +450,16 @@ if [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; then
 fi
 
 if [ "$BACKEND" = openapi ] || [ "$BACKEND" = both ]; then
-    if command -v python3 >/dev/null 2>&1; then
+    if PYTHON_BIN="$(resolve_python)"; then
         printf '%s\n' \
             "OpenAPI 使用一组平台 AK/SK 自动发现全部授权区域。" >&2
         openapi_args=(setup "$ACTION" --mode openapi)
         [ "$SKIP_CONNECT" = yes ] && openapi_args+=(--skip-connect)
-        python3 "$SCRIPT_DIR/scnet.py" "${openapi_args[@]}"
+        "$PYTHON_BIN" "$SCRIPT_DIR/scnet.py" "${openapi_args[@]}"
     else
         printf '%s\n' \
             "OpenAPI backend 需要 Python 3；SSH 配置不受影响。" \
-            "安装 Python 3 后运行：python3 scripts/scnet.py setup --mode openapi" >&2
+            "请设置 DSH_SCNET_PYTHON 或 SCNET_PYTHON 指向 Python 3，或安装 python3。" >&2
     fi
 fi
 

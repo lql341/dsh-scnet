@@ -13,6 +13,7 @@ const {
   parseWalltimeSeconds,
   pickBackend,
   queueCandidates,
+  resolvePythonCandidates,
   translateScnetError,
 } = __testables
 
@@ -48,6 +49,21 @@ test('pickBackend 默认 openapi、显式值透传、非法值拒绝', () => {
   })
   assert.deepEqual(pickBackend('  SSH '), { backend: 'ssh', argv: ['--backend', 'ssh'] })
   assert.match(pickBackend('slurm').error, /只支持 openapi 或 ssh/)
+})
+
+test('resolvePythonCandidates 优先使用 Desktop 注入路径并提供兼容回退', () => {
+  assert.deepEqual(
+    resolvePythonCandidates({
+      DSH_SCNET_PYTHON: '/runtime/python',
+      SCNET_PYTHON: '/legacy/python',
+    }),
+    ['/runtime/python'],
+  )
+  assert.deepEqual(
+    resolvePythonCandidates({ SCNET_PYTHON: '/configured/python' }),
+    ['/configured/python'],
+  )
+  assert.deepEqual(resolvePythonCandidates({}), ['python3', 'python'])
 })
 
 test('errorTextFrom 能从 --json 错误信封里取出 error', () => {

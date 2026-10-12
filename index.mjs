@@ -12,6 +12,11 @@ const SKILL_DIR = join(__dirname, 'skills', 'scnet-hpc')
 const SCRIPTS_DIR = join(SKILL_DIR, 'scripts')
 const CLUSTERS_DIR = join(SKILL_DIR, 'clusters')
 
+export function resolvePythonCandidates(env = process.env) {
+  const configured = String(env.DSH_SCNET_PYTHON ?? env.SCNET_PYTHON ?? '').trim()
+  return configured ? [configured] : ['python3', 'python']
+}
+
 function runBash(script, args, timeoutMs = 120000, cwd = SKILL_DIR) {
   return new Promise((resolve) => {
     execFile(
@@ -32,21 +37,35 @@ function runBash(script, args, timeoutMs = 120000, cwd = SKILL_DIR) {
 }
 
 function runScnet(args, timeoutMs = 120000) {
+  const candidates = resolvePythonCandidates()
+  const scriptArgs = [join(SCRIPTS_DIR, 'scnet.py'), '--json', ...args]
+
   return new Promise((resolve) => {
-    execFile(
-      'python3',
-      [join(SCRIPTS_DIR, 'scnet.py'), '--json', ...args],
-      { cwd: SKILL_DIR, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        const code = error ? (typeof error.code === 'number' ? error.code : 1) : 0
-        resolve({
-          ok: code === 0,
-          code,
-          stdout: String(stdout || ''),
-          stderr: String(stderr || ''),
-        })
-      },
-    )
+    const attempt = (index) => {
+      const executable = candidates[index]
+      execFile(
+        executable,
+        scriptArgs,
+        { cwd: SKILL_DIR, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
+        (error, stdout, stderr) => {
+          if (error?.code === 'ENOENT' && index + 1 < candidates.length) {
+            attempt(index + 1)
+            return
+          }
+          const code = error ? (typeof error.code === 'number' ? error.code : 1) : 0
+          resolve({
+            ok: code === 0,
+            code,
+            executable,
+            stdout: String(stdout || ''),
+            stderr: error?.code === 'ENOENT'
+              ? `无法启动 Python 解释器 ${executable}；请设置 DSH_SCNET_PYTHON 或 SCNET_PYTHON 指向 Python 3。`
+              : String(stderr || ''),
+          })
+        },
+      )
+    }
+    attempt(0)
   })
 }
 
@@ -1173,5 +1192,6 @@ export const __testables = {
   parseWalltimeSeconds,
   pickBackend,
   queueCandidates,
+  resolvePythonCandidates,
   translateScnetError,
 }

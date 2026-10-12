@@ -4,15 +4,14 @@
 
 <p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）：配置 SSH、管理 Slurm 作业、查询 OpenAPI 区域和文件、检查 Notebook 资源与实例，并保留海光 DCU/DTK 诊断能力。</p>
 
-当前版本：**0.6.6**
+当前版本：**0.6.7**
 
 <!-- scnet-release:start -->
-## 0.6.6 更新
+## 0.6.7 更新
 
-- README 的版本亮点改为由 canonical 单一来源生成；每次发布替换当前版本区块，不再逐版
-  堆叠成流水账。
-- canonical Skill 和 Codex Plugin 在校验通过后自动创建 Git tag 与 GitHub Release。
-- DSH 分发仓库在同步版本进入 `main` 后，自动完成 npm 发布、Git tag 和 GitHub Release。
+- Desktop 主机可通过 `DSH_SCNET_PYTHON` 或 `SCNET_PYTHON` 注入经过校验的 Python 3
+  解释器，本地入口不再强制要求命令名为 `python3`。
+- 共享 shell 辅助函数会在运行 OpenAPI 或本地作业生成前拒绝 Python 2 和无效解释器路径。
 <!-- scnet-release:end -->
 
 > 本项目是独立维护的社区项目，与 DeepSeek Harness 兼容，但不是 DeepSeek 官方产品，也不表示 DeepSeek 对本项目提供背书、合作或授权。

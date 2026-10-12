@@ -12,6 +12,37 @@ CLUSTER_DIR="$REPO_ROOT/clusters"
 die() { printf '错误: %s\n' "$1" >&2; exit 1; }
 info() { printf '  %s\n' "$1"; }
 
+# Resolve the local Python 3 interpreter without assuming that every desktop
+# distribution exposes the command as `python3`. Desktop hosts may inject an
+# absolute path through DSH_SCNET_PYTHON; SCNET_PYTHON is the portable alias.
+resolve_python() {
+    local configured="${DSH_SCNET_PYTHON:-${SCNET_PYTHON:-}}"
+    local candidate resolved
+
+    if [ -n "$configured" ]; then
+        if [ -x "$configured" ]; then
+            resolved="$configured"
+        else
+            resolved="$(command -v "$configured" 2>/dev/null || true)"
+        fi
+        [ -n "$resolved" ] || return 1
+        "$resolved" -c 'import sys; raise SystemExit(0 if sys.version_info.major == 3 else 1)' \
+            >/dev/null 2>&1 || return 1
+        printf '%s\n' "$resolved"
+        return 0
+    fi
+
+    for candidate in python3 python; do
+        resolved="$(command -v "$candidate" 2>/dev/null || true)"
+        [ -n "$resolved" ] || continue
+        "$resolved" -c 'import sys; raise SystemExit(0 if sys.version_info.major == 3 else 1)' \
+            >/dev/null 2>&1 || continue
+        printf '%s\n' "$resolved"
+        return 0
+    done
+    return 1
+}
+
 list_clusters() {
     find "$CLUSTER_DIR" -maxdepth 1 -name '*.conf' ! -name '_*' -exec basename {} .conf \; 2>/dev/null | sort
 }

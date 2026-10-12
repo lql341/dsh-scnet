@@ -50,6 +50,20 @@ ssh <集群> 'module avail 2>&1'
 
 ## Python 环境
 
+### 本地脚本解释器
+
+Linux Desktop 可将随包 Python 的绝对路径注入本地脚本：
+
+```bash
+export DSH_SCNET_PYTHON=/path/to/bundled/python
+# 通用环境也可使用：
+export SCNET_PYTHON=/path/to/python3
+```
+
+`DSH_SCNET_PYTHON` 优先于 `SCNET_PYTHON`。脚本会验证解释器确实是 Python 3；
+未注入时才按 `python3`、`python` 顺序探测。该设置只影响本机的 OpenAPI CLI 和作业
+脚本生成，不会把本机解释器路径传到远端计算节点。
+
 超算通常没有系统级的 torch，用 venv 或 conda env。profile 的 `DEFAULT_VENV`
 记录默认环境路径（相对家目录）。
 
