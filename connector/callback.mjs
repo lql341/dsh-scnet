@@ -61,6 +61,10 @@ export async function listenLoopbackCallback({
   }
 
   const server = createServer((req, res) => {
+    if (settled) {
+      responseBody(res, 410, '<!doctype html><title>Callback closed</title>')
+      return
+    }
     const host = req.headers.host
     const callbackUrl = host ? new URL(req.url || '/', `${requested.protocol}//${host}`) : undefined
     if (req.method !== 'GET' || !callbackUrl || callbackUrl.pathname !== requested.pathname) {
