@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.8 - 2026-10-12
+
+- Add stable connector error codes and JSON-safe error envelopes.
+- Add one-shot OAuth callback sessions that reject callback replay.
+- Add a platform credential-store adapter for Secret Service or other OS keyrings without a
+  plaintext fallback.
+
 ## 0.6.7 - 2026-10-12
 
 - Allow Desktop hosts to inject a verified Python 3 interpreter through

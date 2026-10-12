@@ -4,15 +4,15 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.7**
+Current release: **0.6.8**
 
 <!-- scnet-release:start -->
-## 0.6.7 highlights
+## 0.6.8 highlights
 
-- Desktop hosts can inject a verified Python 3 interpreter through `DSH_SCNET_PYTHON` or
-  `SCNET_PYTHON`; local entrypoints no longer require the command name `python3`.
-- Shared shell helpers reject Python 2 and invalid configured interpreters before running
-  OpenAPI or local job-generation code.
+- The connector now exposes stable error codes and JSON-safe envelopes for authentication,
+  callback, network, scope, region, and platform failures.
+- OAuth callback sessions are one-shot and reject replay; platform keyring adapters have no
+  plaintext fallback.
 <!-- scnet-release:end -->
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.

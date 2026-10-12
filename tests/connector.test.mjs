@@ -2,10 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  CONNECTOR_ERROR_CODES,
+  ConnectorError,
+  createCredentialStoreAdapter,
   MemoryCredentialStore,
   TokenLifecycle,
   assertCapability,
   createAuthorizationRequest,
+  createAuthorizationSession,
   createConnectorDescriptor,
   createPkceChallenge,
   createRefreshTokenRequest,
@@ -76,6 +80,69 @@ test('accepts a matching callback and rejects state or redirect mismatches', () 
     () => validateAuthorizationCallback('http://127.0.0.1:43818/callback?code=abc&state=state-1', request),
     /redirect URI does not match/,
   )
+})
+
+test('authorization sessions consume a callback once and classify replay', () => {
+  const session = createAuthorizationSession(requestOptions)
+  assert.equal(session.consumed, false)
+  assert.deepEqual(
+    session.consumeCallback(
+      'http://127.0.0.1:43817/callback?code=abc&state=state-1&iss=https%3A%2F%2Fauth.example.test',
+    ),
+    { code: 'abc', state: 'state-1', issuer: 'https://auth.example.test' },
+  )
+  assert.equal(session.consumed, true)
+  assert.throws(
+    () => session.consumeCallback('http://127.0.0.1:43817/callback?code=abc&state=state-1'),
+    (error) => error instanceof ConnectorError && error.code === 'CALLBACK_REPLAY',
+  )
+})
+
+test('connector errors produce stable safe envelopes', () => {
+  assert.ok(CONNECTOR_ERROR_CODES.includes('AUTHENTICATION_REQUIRED'))
+  const error = new ConnectorError('NETWORK_TIMEOUT', 'SCNet request timed out', {
+    operation: 'listRegions',
+    retryable: true,
+  })
+  assert.deepEqual(error.toJSON(), {
+    ok: false,
+    error_code: 'NETWORK_TIMEOUT',
+    error: 'SCNet request timed out',
+    operation: 'listRegions',
+    retryable: true,
+  })
+  assert.doesNotMatch(JSON.stringify(error.toJSON()), /access|refresh|secret|token/i)
+})
+
+test('credential store adapter namespaces keys and has no plaintext fallback', async () => {
+  const values = new Map()
+  const calls = []
+  const adapter = createCredentialStoreAdapter({
+    namespace: 'desktop.scnet',
+    backend: {
+      async get(key) {
+        calls.push(['get', key])
+        return values.get(key)
+      },
+      async set(key, value) {
+        calls.push(['set', key])
+        values.set(key, value)
+      },
+      async delete(key) {
+        calls.push(['delete', key])
+        values.delete(key)
+      },
+    },
+  })
+  await adapter.set('tokens', { accessToken: 'secret' })
+  assert.deepEqual(await adapter.get('tokens'), { accessToken: 'secret' })
+  assert.deepEqual(calls.slice(0, 2), [
+    ['set', 'desktop.scnet.tokens'],
+    ['get', 'desktop.scnet.tokens'],
+  ])
+  assert.equal(typeof adapter.clear, 'function')
+  await adapter.delete('tokens')
+  assert.equal(await adapter.get('tokens'), undefined)
 })
 
 test('rejects an authorization error and an unexpected issuer', () => {

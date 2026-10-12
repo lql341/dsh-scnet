@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { ConnectorError } from './errors.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost'])
 
@@ -127,6 +128,33 @@ export function validateAuthorizationCallback(callbackUrl, request) {
     code,
     state: returnedState,
     issuer: callback.searchParams.get('iss') || undefined,
+  })
+}
+
+export function createAuthorizationSession(options = {}) {
+  const request = createAuthorizationRequest(options)
+  let consumed = false
+  return Object.freeze({
+    request,
+    get consumed() {
+      return consumed
+    },
+    consumeCallback(callbackUrl) {
+      if (consumed) {
+        throw new ConnectorError(
+          'CALLBACK_REPLAY',
+          'OAuth authorization callback has already been consumed',
+          { operation: 'login' },
+        )
+      }
+      consumed = true
+      try {
+        return validateAuthorizationCallback(callbackUrl, request)
+      } catch (error) {
+        if (error instanceof ConnectorError) throw error
+        throw new ConnectorError('CALLBACK_MISMATCH', error.message, { operation: 'login' })
+      }
+    },
   })
 }
 
