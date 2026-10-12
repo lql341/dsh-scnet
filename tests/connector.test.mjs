@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { request as httpRequest } from 'node:http'
 
 import {
   CONNECTOR_ERROR_CODES,
@@ -14,6 +15,7 @@ import {
   createPkceChallenge,
   createRefreshTokenRequest,
   createTokenExchangeRequest,
+  listenLoopbackCallback,
   normalizeTokenResponse,
   validateAuthorizationCallback,
 } from '../connector/index.mjs'
@@ -96,6 +98,60 @@ test('authorization sessions consume a callback once and classify replay', () =>
     () => session.consumeCallback('http://127.0.0.1:43817/callback?code=abc&state=state-1'),
     (error) => error instanceof ConnectorError && error.code === 'CALLBACK_REPLAY',
   )
+})
+
+test('loopback callback listener consumes one matching request and closes', async () => {
+  let session
+  const listener = await listenLoopbackCallback({
+    redirectUri: 'http://127.0.0.1:0/callback',
+    consumeCallback: (url) => session.consumeCallback(url),
+  })
+  session = createAuthorizationSession({ ...requestOptions, redirectUri: listener.redirectUri })
+  const callback = new URL(listener.redirectUri)
+  callback.search = '?code=abc&state=state-1&iss=https%3A%2F%2Fauth.example.test'
+  const response = await new Promise((resolve, reject) => {
+    const request = httpRequest(callback, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk) => { body += chunk })
+      res.on('end', () => resolve({ status: res.statusCode, body }))
+    })
+    request.on('error', reject)
+    request.end()
+  })
+  assert.equal(response.status, 200)
+  assert.match(response.body, /doctype html/)
+  assert.deepEqual(await listener.waitForCallback(), {
+    code: 'abc',
+    state: 'state-1',
+    issuer: 'https://auth.example.test',
+  })
+  assert.equal(session.consumed, true)
+})
+
+test('loopback callback listener rejects a wrong path and times out without exposing details', async () => {
+  const listener = await listenLoopbackCallback({
+    redirectUri: 'http://127.0.0.1:0/callback',
+    consumeCallback: () => {
+      throw new Error('private callback detail')
+    },
+    timeoutMs: 25,
+  })
+  const wrongPath = new URL(listener.redirectUri)
+  wrongPath.pathname = '/other'
+  const response = await new Promise((resolve, reject) => {
+    const request = httpRequest(wrongPath, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk) => { body += chunk })
+      res.on('end', () => resolve({ status: res.statusCode, body }))
+    })
+    request.on('error', reject)
+    request.end()
+  })
+  assert.equal(response.status, 404)
+  assert.doesNotMatch(response.body, /private callback detail/)
+  await assert.rejects(listener.waitForCallback(), (error) => error.code === 'CALLBACK_MISMATCH' && /timed out/.test(error.message))
 })
 
 test('connector errors produce stable safe envelopes', () => {
