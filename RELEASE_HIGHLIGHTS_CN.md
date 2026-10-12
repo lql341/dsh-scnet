@@ -1,3 +1,3 @@
-- Desktop 主机可通过 `DSH_SCNET_PYTHON` 或 `SCNET_PYTHON` 注入经过校验的 Python 3
-  解释器，本地入口不再强制要求命令名为 `python3`。
-- 共享 shell 辅助函数会在运行 OpenAPI 或本地作业生成前拒绝 Python 2 和无效解释器路径。
+- connector 现在提供稳定错误码和 JSON 安全错误信封，覆盖认证、回调、网络、权限、
+  区域和平台能力失败。
+- OAuth 回调会话只允许消费一次并拒绝重放；平台 keyring 适配器不提供明文回退。
