@@ -1,10 +1,5 @@
 # Changelog
 
-## 0.6.9 - 2026-10-12
-
-- Add a protocol-neutral one-shot loopback OAuth callback listener with fixed-path validation,
-  timeout cleanup, and generic browser responses that never expose callback details.
-
 ## 0.6.8 - 2026-10-12
 
 - Add stable connector error codes and JSON-safe error envelopes.
