@@ -4,14 +4,15 @@
 
 <p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）：配置 SSH、管理 Slurm 作业、查询 OpenAPI 区域和文件、检查 Notebook 资源与实例，并保留海光 DCU/DTK 诊断能力。</p>
 
-当前版本：**0.6.8**
+当前版本：**0.6.9**
 
 <!-- scnet-release:start -->
-## 0.6.8 更新
+## 0.6.9 更新
 
-- connector 现在提供稳定错误码和 JSON 安全错误信封，覆盖认证、回调、网络、权限、
-  区域和平台能力失败。
-- OAuth 回调会话只允许消费一次并拒绝重放；平台 keyring 适配器不提供明文回退。
+- OpenAPI 与 SSH 的 CLI 默认使用精简输出；需要更多信息时使用 `--details` 或 `--raw`，
+  作业等待改为程序内部有界轮询，减少重复输出。
+- OpenAPI 在作业状态终结前通过账本确认，SSH 作业离开实时队列后自动回退到账本查询。
+- 首次配置默认选择 OpenAPI，已有用户保留原 backend 偏好，更新设置时保留无关配置字段。
 <!-- scnet-release:end -->
 
 > 本项目是独立维护的社区项目，与 DeepSeek Harness 兼容，但不是 DeepSeek 官方产品，也不表示 DeepSeek 对本项目提供背书、合作或授权。

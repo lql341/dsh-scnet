@@ -1,9 +1,20 @@
 # Changelog
 
+## 0.6.9 - 2026-10-14
+
+- Default CLI job, transfer, queue, and log output to a compact projection; add `--details`
+  for the previous normalized field set while preserving `--raw` and full dry-run previews.
+- Keep SDK/backend schemas independent from CLI output and document bounded internal waiting.
+- Fall back to Slurm accounting when SSH `squeue` reports an invalid historical job ID.
+- Confirm ambiguous OpenAPI live completion through accounting; report `FINALIZING` until
+  accounting arrives, including immediately after cancellation.
+- Align first-use defaults and preserve configuration fields when updating the Bash panel.
+- Correct token caching, SSH option compatibility, and Notebook documentation.
+
 ## 0.6.8 - 2026-10-12
 
-- Add stable connector error codes and JSON-safe error envelopes.
-- Add one-shot OAuth callback sessions that reject callback replay.
+- In the downstream DSH connector, add stable error codes and JSON-safe error envelopes.
+- In the downstream DSH connector, add one-shot OAuth callback sessions that reject callback replay.
 - Add a platform credential-store adapter for Secret Service or other OS keyrings without a
   plaintext fallback.
 

@@ -27,8 +27,9 @@ Host <集群> <主机名>
   Port <端口>
   IdentityFile ~/.ssh/id_rsa_<集群>
   IdentitiesOnly yes
-  # 以下两行仅 macOS 支持，Linux 上会报 unknown option
+  # UseKeychain 仅适用于 Apple OpenSSH；Linux 上省略
   UseKeychain yes
+  # 标准 OpenSSH 选项，需要运行 ssh-agent
   AddKeysToAgent yes
   # 长连接
   ControlMaster auto
@@ -66,7 +67,8 @@ client_global_hostkeys_prove_confirm: server gave bad signature for RSA key 0
 
 | 项 | macOS | Linux |
 |---|---|---|
-| `UseKeychain` / `AddKeysToAgent` | 支持 | **不支持**，报 unknown option |
+| `UseKeychain` | Apple OpenSSH 支持 | 不支持，应省略 |
+| `AddKeysToAgent` | 支持 | 支持，需要运行 ssh-agent |
 | 下载文件隔离属性 | 需 `xattr -c` | 无此概念 |
 | `sed -i` | 需 `sed -i ''`（BSD sed） | `sed -i`（GNU sed） |
 

@@ -92,8 +92,11 @@ choose() {
     shift
     local choices=("$@")
     local index choice
+    local default_index="${SCNET_SETUP_CHOICE_DEFAULT:-1}"
+    [[ "$default_index" =~ ^[0-9]+$ ]] || die "默认选项必须是数字"
+    [ "$default_index" -ge 1 ] && [ "$default_index" -le "${#choices[@]}" ] || die "默认选项超出范围"
     if [ -t 0 ] && [ -t 2 ] && [ "${TERM:-dumb}" != "dumb" ]; then
-        local selected=0
+        local selected=$((default_index - 1))
         local number=""
         local key sequence value
         local line_count=$(( ${#choices[@]} + 1 ))
@@ -165,11 +168,11 @@ choose() {
     for index in "${!choices[@]}"; do
         printf '  %d. %s\n' "$((index + 1))" "${choices[$index]}" >&2
     done
-    printf '请输入 1-%d 的数字并按 Enter；直接按 Enter 使用默认项 1。\n' \
-        "${#choices[@]}" >&2
+    printf '请输入 1-%d 的数字并按 Enter；直接按 Enter 使用默认项 %d。\n' \
+        "${#choices[@]}" "$default_index" >&2
     printf '当前终端不支持交互导航，已使用数字输入模式。\n' >&2
     local selected
-    selected=$(ask "选择" "1")
+    selected=$(ask "选择" "$default_index")
     [[ "$selected" =~ ^[0-9]+$ ]] || die "选择必须是数字"
     [ "$selected" -ge 1 ] && [ "$selected" -le "${#choices[@]}" ] \
         || die "选择超出范围"
@@ -195,6 +198,18 @@ json_string() {
 write_config() {
     local config_root="${XDG_CONFIG_HOME:-$HOME/.config}/scnet-hpc"
     local config_path="$config_root/config.json"
+    if [ -n "${PYTHON_BIN:-}" ]; then
+        "$PYTHON_BIN" - "$SCRIPT_DIR" "$CLUSTER" "$DEFAULT_BACKEND" <<'PYCONFIG'
+import sys
+sys.path.insert(0, sys.argv[1])
+from scnet_config import load_user_config, save_user_config
+config = load_user_config()
+config.update(version=1, cluster=sys.argv[2], default_backend=sys.argv[3])
+print(save_user_config(config))
+PYCONFIG
+        return
+    fi
+    [ ! -f "$config_path" ] || die "更新已有主配置需要 Python 3，以保留其他配置字段"
     mkdir -p "$config_root"
     chmod 700 "$config_root"
 
@@ -353,10 +368,25 @@ case "$(uname -s)" in
 esac
 printf '\n' >&2
 
-available=$(list_clusters)
-[ -n "$available" ] || die "clusters/ 下没有 profile"
+config_root="${XDG_CONFIG_HOME:-$HOME/.config}/scnet-hpc"
+PYTHON_BIN="$(resolve_python)" || PYTHON_BIN=""
+saved_backend=$(json_string_value "$config_root/config.json" default_backend)
+action_default=2
+if [ -n "$PYTHON_BIN" ]; then
+    action_default=$("$PYTHON_BIN" - "$SCRIPT_DIR" <<'PYDEFAULT'
+import sys
+sys.path.insert(0, sys.argv[1])
+from scnet_config import load_user_config
+from scnet import _has_configuration
+print(3 if _has_configuration(load_user_config()) else 2)
+PYDEFAULT
+    )
+elif [ -f "$config_root/config.json" ] || [ -f "$config_root/openapi.json" ] \
+    || compgen -G "$config_root/ssh/*.json" >/dev/null; then
+    action_default=3
+fi
 if [ -z "$ACTION" ]; then
-    action_label=$(choose "选择配置操作：" \
+    action_label=$(SCNET_SETUP_CHOICE_DEFAULT="$action_default" choose "选择配置操作：" \
         "查看当前状态（status）" \
         "新增连接（new）" \
         "修改现有配置（modify）" \
@@ -381,7 +411,9 @@ if [ "$ACTION" = status ] || [ "$ACTION" = reset ]; then
 fi
 
 if [ -z "$BACKEND" ]; then
-    BACKEND=$(choose "选择要管理的 backend：" \
+    backend_default=1
+    [ "$saved_backend" != ssh ] || backend_default=2
+    BACKEND=$(SCNET_SETUP_CHOICE_DEFAULT="$backend_default" choose "选择要管理的 backend：" \
         "openapi（推荐：平台级 AK/SK 和多区域）" \
         "ssh（区域级用户名和私钥）" \
         "both（同时管理）")
@@ -395,6 +427,17 @@ case "$BACKEND" in
     ssh|openapi|both) ;;
     *) die "backend 必须是 ssh、openapi 或 both" ;;
 esac
+
+# Check requirements before installing keys or changing local configuration.
+if [ "$BACKEND" = openapi ] || [ "$BACKEND" = both ]; then
+    [ -n "$PYTHON_BIN" ] || die "OpenAPI 配置需要 Python 3；请设置 DSH_SCNET_PYTHON 或 SCNET_PYTHON，或安装 python3"
+fi
+if [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; then
+    [ -n "$PYTHON_BIN" ] || [ ! -f "$config_root/config.json" ] \
+        || die "更新已有主配置需要 Python 3，以保留其他配置字段"
+    available=$(list_clusters)
+    [ -n "$available" ] || die "clusters/ 下没有 profile"
+fi
 
 if { [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; } \
     && [ -z "$CLUSTER" ]; then
@@ -429,7 +472,9 @@ fi
 
 DEFAULT_BACKEND="$BACKEND"
 if [ "$BACKEND" = both ]; then
-    DEFAULT_BACKEND=$(choose "选择默认 backend：" "openapi" "ssh")
+    backend_default=1
+    [ "$saved_backend" != ssh ] || backend_default=2
+    DEFAULT_BACKEND=$(SCNET_SETUP_CHOICE_DEFAULT="$backend_default" choose "选择默认 backend：" "openapi" "ssh")
 fi
 
 if [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; then
@@ -458,8 +503,8 @@ if [ "$BACKEND" = openapi ] || [ "$BACKEND" = both ]; then
         "$PYTHON_BIN" "$SCRIPT_DIR/scnet.py" "${openapi_args[@]}"
     else
         printf '%s\n' \
-            "OpenAPI backend 需要 Python 3；SSH 配置不受影响。" \
-            "请设置 DSH_SCNET_PYTHON 或 SCNET_PYTHON 指向 Python 3，或安装 python3。" >&2
+            "OpenAPI backend 需要 Python 3。" >&2
+        exit 1
     fi
 fi
 

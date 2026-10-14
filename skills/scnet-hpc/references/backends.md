@@ -45,7 +45,9 @@ backend.
 
 ## Common CLI
 
-On a new computer, start with the dependency-light Bash panel:
+On a new computer, start with the Bash panel. OpenAPI setup requires Python 3; without it,
+only first-time SSH setup is supported. Updating an existing main configuration requires Python
+to preserve unrelated fields. New users default to OpenAPI; existing backend choices are retained:
 
 ```bash
 ./scripts/setup.sh
@@ -175,3 +177,22 @@ OPENAPI_USERNAME=""
 ```
 
 Keep AK, SK, tokens, cookies, and passwords out of profiles.
+
+## Compact output and waiting
+
+Default job output includes ID, state, queue, and available exit code or failure reason.
+Empty fields are omitted; zero and false are retained. Use `--details` for all normalized
+fields and `--raw` for backend data. `--json` retains its envelope with compact formatting;
+`--dry-run` always retains the complete preview. Consumers needing the previous complete
+CLI payload must pass `--details`; SDK/backend return schemas are preserved.
+
+```bash
+python3 scripts/scnet.py --region <id> job <job-id>
+python3 scripts/scnet.py --details --region <id> job <job-id>
+python3 scripts/scnet.py --region <id> wait <job-id> --interval 3 --wait-timeout 180
+```
+
+`wait` polls internally and emits only the final result or timeout summary. OpenAPI live
+`COMPLETED` can also describe a recently cancelled job: until accounting confirms the state,
+output reports `FINALIZING`. Waiting may therefore include accounting update latency.
+Transfers return the target path and byte count; logs return only the requested lines.

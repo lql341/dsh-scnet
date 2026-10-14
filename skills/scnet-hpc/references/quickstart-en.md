@@ -54,7 +54,23 @@ The repository is designed to be shared by Codex, Claude Code, and OpenCode. Ins
 paths depend on the local agent layout; `install.sh --link` is useful when developing the
 skill from a shared source directory.
 
-## 3. Configure SSH
+## 3. Configure OpenAPI and use the default backend
+
+Python 3 is required for OpenAPI setup. On first use the panel selects `new` and OpenAPI;
+on later runs it selects `modify` and retains the saved backend choice. Supply platform AK/SK
+through the panel, environment variables, or a supported OS credential store.
+
+```bash
+./scripts/setup.sh new --backend openapi
+python3 scripts/scnet.py clusters
+python3 scripts/scnet.py --region <region-id> queues
+python3 scripts/scnet.py --region <region-id> jobs
+```
+
+For submission, cancellation, logs, and files, see `references/openapi.md`. These operations
+use OpenAPI by default when no backend preference overrides it.
+
+## 4. Configure SSH for shell workflows
 
 Download the private key from the SCNet console, then run:
 
@@ -66,7 +82,7 @@ ssh <cluster>
 The script installs the key under `~/.ssh`, adds an SSH config entry, and tests the
 connection. Do not commit private keys, usernames, internal node names, or personal paths.
 
-## 4. Generate a Slurm job
+## 5. Generate a Slurm job for the SSH workflow
 
 Accelerator job:
 
@@ -104,7 +120,7 @@ ssh <cluster> 'sbatch --test-only ~/scripts/myjob.slurm'
 ssh <cluster> 'sbatch ~/scripts/myjob.slurm'
 ```
 
-## 5. Monitor and debug
+## 6. Monitor and debug over SSH
 
 ```bash
 squeue -u "$USER"
@@ -119,7 +135,7 @@ ends with the real program exit code.
 For short experiments, request an interactive allocation with `srun`. Use the partition,
 GRES type, CPU count, and memory limit from the target profile.
 
-## 6. SCNet environment rules
+## 7. SCNet environment rules
 
 - Login nodes are for source management, dependency preparation, file operations, and
   scheduler commands. Whether package indexes and model sites are reachable is cluster-specific.
@@ -130,7 +146,7 @@ GRES type, CPU count, and memory limit from the target profile.
 - Loading a module on a login node does not prove that the runtime works on a compute node.
 - Hygon DCU software capabilities depend on the exact DTK, driver, framework, and `gfx` target.
 
-## 7. Refresh and probe a cluster
+## 8. Refresh and probe a cluster
 
 ```bash
 ./scripts/refresh-cluster.sh --cluster <cluster> --dry-run

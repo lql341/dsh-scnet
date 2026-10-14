@@ -12,6 +12,8 @@ available through the API. Never silently switch backends.
 ## First use and selection
 
 - Run `scripts/setup.sh new|modify|status|reset` for explicit configuration lifecycle.
+  OpenAPI setup requires Python 3. With no saved preference, default to OpenAPI; credentials
+  can come from environment variables or the supported OS credential store.
 - Advanced OpenAPI discovery: `python3 scripts/scnet.py setup`.
 - Read-only preflight: `python3 scripts/scnet.py doctor`.
 - Backend precedence: `--backend`, `SCNET_HPC_BACKEND`, saved setup choice, profile
@@ -67,4 +69,6 @@ override examples.
 - `scripts/probe-cluster.sh`: initial profile creation.
 - `scripts/run-compute-probe.sh`: bounded accelerator probe.
 
-Use compact normalized output by default. Request raw backend data only for diagnosis.
+Use compact normalized output by default. Use `--details` for full normalized fields and
+`--raw` only for diagnosis. Prefer bounded `wait` over sending every polling response to the
+model. `FINALIZING` means the OpenAPI accounting state is not yet confirmed.

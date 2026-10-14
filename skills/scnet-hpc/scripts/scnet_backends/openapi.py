@@ -65,8 +65,18 @@ def normalize_job(item: Mapping[str, Any]) -> dict[str, Any]:
         "raw_state": raw_state,
         "queue": item.get("queue") or item.get("queueName"),
         "user": item.get("user") or item.get("userName"),
-        "nodes": item.get("nodeNumReq") or item.get("nodeUsed") or item.get("nodeNum"),
-        "cpus": item.get("procNumReq") or item.get("procNumUsed") or item.get("nproc"),
+        "nodes": (
+            item.get("nodeNumReq")
+            or item.get("nodeUsed")
+            or item.get("nodeNum")
+            or item.get("nodect")
+        ),
+        "cpus": (
+            item.get("procNumReq")
+            or item.get("procNumUsed")
+            or item.get("nproc")
+            or item.get("jobProcNum")
+        ),
         "gpus": item.get("gpuNumReq") or item.get("gpuNumUsed"),
         "dcus": item.get("dcuNumReq") or item.get("dcuNumUsed"),
         "elapsed": item.get("jobRunTime") or item.get("jobWalltimeUsed"),
@@ -78,6 +88,7 @@ def normalize_job(item: Mapping[str, Any]) -> dict[str, Any]:
         "started_at": item.get("jobStartTime"),
         "ended_at": item.get("jobEndTime") or item.get("acctTime"),
         "exit_code": item.get("exitCode"),
+        "platform_exit_status": item.get("jobExitStatus"),
         "reason": item.get("reason"),
         "work_dir": item.get("workDir") or item.get("workdir"),
         "stdout": item.get("outputPath"),
@@ -405,6 +416,32 @@ class OpenAPIBackend(Backend):
             if candidate.get("jobId") or candidate.get("job_id"):
                 result = normalize_job(candidate)
                 result["source"] = "realtime"
+                if result["state"] == "COMPLETED":
+                    # The live service also reports statC immediately after cancellation.
+                    # Prefer accounting evidence; until it exists, do not claim completion.
+                    items, _, history_raw = self._history_jobs(
+                        hpc_url, token, scheduler_id, job_id=job_id, days=30, limit=1
+                    )
+                    history = next(
+                        (
+                            item
+                            for item in items
+                            if str(item.get("jobId") or item.get("job_id"))
+                            == job_id
+                        ),
+                        None,
+                    )
+                    if history is not None:
+                        result = normalize_job(history)
+                        result["source"] = "history"
+                        if options.get("raw"):
+                            result["raw"] = {"item": history, "response": history_raw}
+                        return result
+                    result.update(
+                        state="FINALIZING",
+                        reported_state="COMPLETED",
+                        state_confirmed=False,
+                    )
                 if options.get("raw"):
                     result["raw"] = candidate
                 return result
