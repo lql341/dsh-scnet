@@ -79,6 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="request backend-specific raw fields when supported",
     )
+    parser.add_argument(
+        "--details",
+        action="store_true",
+        help="include full normalized fields and formatted JSON; --raw includes backend data",
+    )
     subparsers = parser.add_subparsers(dest="operation", required=True)
 
     subparsers.add_parser("backends", help="list built-in and discovered backends")
@@ -224,20 +229,122 @@ def choose_backend(
     )
 
 
-def compact_output(operation: str, data: Any) -> str:
+def _without_empty(data: Any) -> Any:
+    if isinstance(data, dict):
+        return {
+            key: _without_empty(value) for key, value in data.items()
+            if value is not None and value != ""
+        }
+    if isinstance(data, list):
+        return [_without_empty(value) for value in data]
+    return data
+
+
+def summarize_output(operation: str, data: Any) -> Any:
+    """Project CLI output only; keep backend/SDK responses available to other callers."""
+
+    def pick(item, keys):
+        return _without_empty({key: item[key] for key in keys if key in item})
+
+    if operation in {"job", "wait"} and isinstance(data, dict):
+        if isinstance(data.get("job"), dict):
+            return {
+                "job": summarize_output("job", data["job"]),
+                **pick(data, ("waited_seconds", "timed_out")),
+            }
+        result = pick(
+            data,
+            (
+                "job_id",
+                "state",
+                "queue",
+                "exit_code",
+                "reason",
+                "state_confirmed",
+                "reported_state",
+                "waited_seconds",
+                "timed_out",
+            ),
+        )
+        if not result.get("queue") and data.get("partition"):
+            result["queue"] = data["partition"]
+        if "state" in result:
+            result["state"] = (
+                str(result["state"])
+                .split(" BY ", 1)[0]
+                .split(" by ", 1)[0]
+                .rstrip("+")
+            )
+        return result
+    if operation == "jobs" and isinstance(data, dict):
+        return {
+            **pick(data, ("total", "scope")),
+            "items": [
+                summarize_output("job", item) for item in data.get("items", [])
+            ],
+        }
+    if operation == "queues" and isinstance(data, list):
+        return [
+            pick(
+                item,
+                (
+                    "partition",
+                    "availability",
+                    "nodes",
+                    "free_nodes",
+                    "free_cpus",
+                    "max_walltime",
+                ),
+            )
+            for item in data
+        ]
+    if operation in {"upload", "download"} and isinstance(data, dict):
+        path = data.get("remote_path")
+        if not path and data.get("remote_dir") and data.get("remote_filename"):
+            path = str(data["remote_dir"]).rstrip("/") + "/" + str(data["remote_filename"])
+        result = {"path": path}
+        size = data.get("bytes")
+        if size is None and data.get("local_path"):
+            local = Path(str(data["local_path"]))
+            if local.is_file():
+                size = local.stat().st_size
+        if size is not None:
+            result["bytes"] = size
+        return _without_empty(result)
+    if operation == "submit" and isinstance(data, dict):
+        return pick(data, ("job_id",))
+    if operation == "cancel" and isinstance(data, dict):
+        return pick(data, ("job_id", "cancelled"))
+    if operation == "mkdir" and isinstance(data, dict):
+        return pick(data, ("path", "created"))
     if operation == "logs" and isinstance(data, dict):
+        return pick(data, ("lines",))
+    # Diagnostic and configuration responses retain their schema.
+    return data
+
+
+def compact_output(operation: str, data: Any, *, detailed: bool = False) -> str:
+    if operation == "logs" and isinstance(data, dict) and "lines" in data:
+        lines = "\n".join(data.get("lines") or [])
+        if not detailed:
+            return lines
         header = (
             f"# {data.get('path')} "
             f"({data.get('direction')}, {len(data.get('lines') or [])} lines)"
         )
-        return header + "\n" + "\n".join(data.get("lines") or [])
+        return header + "\n" + lines
     if operation == "exec" and isinstance(data, dict):
         return str(data.get("stdout") or "")
-    return json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+    return json.dumps(
+        data,
+        ensure_ascii=False,
+        sort_keys=True,
+        **({"indent": 2} if detailed else {"separators": (",", ":")}),
+    )
 
 
 def _job_terminal(state: Any) -> bool:
-    value = str(state or "").upper()
+    value = str(state or "").upper().split(" BY ", 1)[0].rstrip("+")
     return value in {
         "COMPLETED",
         "FAILED",
@@ -245,7 +352,6 @@ def _job_terminal(state: Any) -> bool:
         "TIMEOUT",
         "NODE_ERROR",
         "ABNORMAL",
-        "EXITING",
         "EXITED",
         "DONE",
         "OUT_OF_MEMORY",
@@ -1615,6 +1721,8 @@ def main(argv: list[str] | None = None) -> int:
                 data = backend.execute(args.operation, options)
             else:
                 data = backend.execute(args.operation, options)
+        detailed = args.details or args.raw or args.dry_run
+        output_data = data if detailed else summarize_output(args.operation, data)
         if args.json:
             print(
                 json.dumps(
@@ -1623,15 +1731,15 @@ def main(argv: list[str] | None = None) -> int:
                         "version": VERSION,
                         "backend": backend_name,
                         "operation": args.operation,
-                        "data": data,
+                        "data": output_data,
                     },
                     ensure_ascii=False,
-                    indent=2,
                     sort_keys=True,
+                    **({"indent": 2} if detailed else {"separators": (",", ":")}),
                 )
             )
         elif args.operation != "setup":
-            print(compact_output(args.operation, data))
+            print(compact_output(args.operation, output_data, detailed=detailed))
         if args.operation == "doctor" and not data.get("ok", False):
             return 1
         return 0

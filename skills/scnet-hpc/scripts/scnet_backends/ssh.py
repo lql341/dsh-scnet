@@ -146,10 +146,15 @@ class SSHBackend(Backend):
             "cpus",
             "reason_or_nodes",
         ]
-        output = self._ssh(
-            "LC_ALL=C squeue -h "
-            f"-j {shlex.quote(job_id)} -o '%i|%T|%P|%M|%l|%D|%C|%R'"
-        ).strip()
+        try:
+            output = self._ssh(
+                "LC_ALL=C squeue -h "
+                f"-j {shlex.quote(job_id)} -o '%i|%T|%P|%M|%l|%D|%C|%R'"
+            ).strip()
+        except BackendError as exc:
+            if "invalid job id specified" not in str(exc).lower():
+                raise
+            output = ""
         if output:
             return _split_pipe(output.splitlines()[0], fields)
         output = self._ssh(

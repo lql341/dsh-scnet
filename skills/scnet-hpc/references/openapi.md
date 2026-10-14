@@ -37,8 +37,9 @@ export SCNET_OPENAPI_ACCESS_KEY="<access-key>"
 export SCNET_OPENAPI_SECRET_KEY="<secret-key>"
 ```
 
-The client signs the canonical AK/timestamp/user JSON with HMAC-SHA256 and obtains a fresh
-per-region token for each invocation. It does not persist tokens. The setup panel can store the
+The client signs the canonical AK/timestamp/user JSON with HMAC-SHA256 when requesting
+region tokens. Tokens are reused from a permission-restricted disk cache for up to four hours
+when available; an expired or unavailable cache triggers authentication. The setup panel can store the
 platform credential set in macOS Keychain or Linux Secret Service; otherwise use environment
 variables. Region IDs, region users, schedulers, and home paths are discovered and cached as
 non-secret metadata.
@@ -78,13 +79,18 @@ python3 scripts/scnet.py --backend openapi --region <id> \
   logs --path /absolute/path/std.out.123 --lines 200
 python3 scripts/scnet.py --backend openapi --region <id> \
   files --path /absolute/path
-python3 scripts/scnet.py --backend openapi --region <id> \
-  mkdir /absolute/work/dir --parents
 ```
 
 If a region exposes multiple schedulers, add `--scheduler-id`.
 
 ## Mutations
+
+Create a remote directory:
+
+```bash
+python3 scripts/scnet.py --backend openapi --region <id> \
+  mkdir /absolute/work/dir --parents
+```
 
 OpenAPI submission uses the documented BASIC/BASE command mode. Extra scheduler directives can
 be repeated:
@@ -174,3 +180,22 @@ the public documentation does not establish an idempotency key for submission.
   interactive `srun`, performance profiling, or low-level scheduler diagnosis.
 - API success is determined by both HTTP transport and the JSON `code`; HTTP 200 alone is not
   sufficient.
+
+## Compact output and waiting
+
+Default job output includes ID, state, queue, and available exit code or failure reason.
+Empty fields are omitted; zero and false are retained. Use `--details` for all normalized
+fields and `--raw` for backend data. `--json` retains its envelope with compact formatting;
+`--dry-run` always retains the complete preview. Consumers needing the previous complete
+CLI payload must pass `--details`; SDK/backend return schemas are preserved.
+
+```bash
+python3 scripts/scnet.py --region <id> job <job-id>
+python3 scripts/scnet.py --details --region <id> job <job-id>
+python3 scripts/scnet.py --region <id> wait <job-id> --interval 3 --wait-timeout 180
+```
+
+`wait` polls internally and emits only the final result or timeout summary. OpenAPI live
+`COMPLETED` can also describe a recently cancelled job: until accounting confirms the state,
+output reports `FINALIZING`. Waiting may therefore include accounting update latency.
+Transfers return the target path and byte count; logs return only the requested lines.
