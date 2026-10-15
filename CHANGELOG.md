@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.10 - 2026-10-15
+
+- Coordinate the synchronized downstream DSH release with a protocol-neutral one-shot loopback
+  OAuth callback listener, fixed-path validation, timeout cleanup, and generic browser responses.
+- Keep the canonical Skill endpoint-neutral: no SCNet issuer, endpoint, client ID, scope, or
+  credential is embedded in this release.
+
 ## 0.6.9 - 2026-10-14
 
 - Default CLI job, transfer, queue, and log output to a compact projection; add `--details`

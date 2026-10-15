@@ -1,4 +1,4 @@
-- OpenAPI 与 SSH 的 CLI 默认使用精简输出；需要更多信息时使用 `--details` 或 `--raw`，
-  作业等待改为程序内部有界轮询，减少重复输出。
-- OpenAPI 在作业状态终结前通过账本确认，SSH 作业离开实时队列后自动回退到账本查询。
-- 首次配置默认选择 OpenAPI，已有用户保留原 backend 偏好，更新设置时保留无关配置字段。
+- 协调下游 DSH 发布协议无关的一次性 loopback OAuth 回调监听器，包含固定路径校验、
+  超时清理和不暴露回调细节的通用浏览器响应。
+- canonical Skill 继续保持 endpoint 无关；本版本不嵌入 SCNet issuer、endpoint、client ID、
+  scope 或任何凭证。
