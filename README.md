@@ -4,17 +4,15 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.9**
+Current release: **0.6.10**
 
 <!-- scnet-release:start -->
-## 0.6.9 highlights
+## 0.6.10 highlights
 
-- Default CLI output is compact across OpenAPI and SSH, with `--details` and `--raw` for
-  progressively richer responses and bounded internal job waiting to reduce repeated output.
-- OpenAPI completion is confirmed against accounting before it becomes terminal, and SSH job
-  lookup falls back to accounting after a job leaves the live queue.
-- First-use setup defaults to OpenAPI, retains existing backend preferences, and preserves
-  unrelated configuration fields when settings are updated.
+- Coordinate the synchronized downstream DSH release with a protocol-neutral one-shot loopback
+  OAuth callback listener, fixed-path validation, timeout cleanup, and generic browser responses.
+- Keep the canonical Skill endpoint-neutral; no SCNet issuer, endpoint, client ID, scope, or
+  credential is embedded in this release.
 <!-- scnet-release:end -->
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.

@@ -1,6 +1,4 @@
-- Default CLI output is compact across OpenAPI and SSH, with `--details` and `--raw` for
-  progressively richer responses and bounded internal job waiting to reduce repeated output.
-- OpenAPI completion is confirmed against accounting before it becomes terminal, and SSH job
-  lookup falls back to accounting after a job leaves the live queue.
-- First-use setup defaults to OpenAPI, retains existing backend preferences, and preserves
-  unrelated configuration fields when settings are updated.
+- Coordinate the synchronized downstream DSH release with a protocol-neutral one-shot loopback
+  OAuth callback listener, fixed-path validation, timeout cleanup, and generic browser responses.
+- Keep the canonical Skill endpoint-neutral; no SCNet issuer, endpoint, client ID, scope, or
+  credential is embedded in this release.
