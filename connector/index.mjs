@@ -20,6 +20,10 @@ export {
 } from './credentials.mjs'
 
 export {
+  listenLoopbackCallback,
+} from './callback.mjs'
+
+export {
   MemoryCredentialStore,
   TokenLifecycle,
   createAuthorizationRequest,
