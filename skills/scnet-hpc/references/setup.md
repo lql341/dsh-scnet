@@ -3,6 +3,64 @@
 集群的主机名、端口等参数来自 `clusters/<集群短名>.conf`。
 本文用 `<集群>`、`<主机名>`、`<端口>` 表示从 profile 读出的值。
 
+## 首次配置前先分清三件事
+
+1. **凭据**：在控制台选择目标区域，进入“命令行 E-Shell → 左上角 SSH 连接”，下载私钥并
+   记录域名和端口（[官方步骤](https://www2.scnet.cn/help/docs/mainsite/hpc/advanced-guide/advanced-efile/index.html)）。
+   它与 OpenAPI 的 AK/SK 不同；保留原始文件，可能以 `_rsa.txt` 结尾，不要选择 `.pub` 公钥。
+2. **用户名**：填写区域内的集群/Linux 用户名，不一定等于 SCNet 平台登录名；文件名只作为
+   自动推断线索，不确定时在该区域网页 E-Shell 中执行 `whoami` 核对。
+3. **运行环境**：macOS/Linux/WSL2 可运行自动安装脚本。Windows 原生 OpenSSH 的配置和
+   WSL2 里的 `~/.ssh` 不共享，在哪个环境运行作业工具，就在该环境配置 SSH。
+
+在 macOS/Linux/WSL2 运行 `./scripts/setup.sh new --backend ssh`，或
+`python3 scripts/scnet.py setup new --mode ssh`。路径带空格时可使用外层引号；向导只需要路径，
+不要粘贴私钥正文。安装前会显示主机、端口、目标位置，安装后显示实际生效的 `ssh -G` 参数。
+
+安装位置为 `~/.ssh/id_rsa_<集群>`，配置为 `~/.ssh/config`。不同的旧私钥先备份；只更新
+本工具管理的 Host 块，其他已有 Host 保留。保留旧 Host 时，务必核对实际 IdentityFile
+是否指向新密钥。`--skip-connect` 只保存元数据，不代表私钥已安装或连接已验证。
+
+私钥有口令时先执行 `ssh-add <私钥文件路径>`；如果无法解析但没有设置口令，重新下载原始
+文件，不要把损坏的格式误认为“有口令”。`Permission denied` 还可能表示私钥过期、用户名
+不匹配或 IP 白名单限制，不只是输入错误。
+
+## Windows 原生 OpenSSH（手工配置）
+
+若使用完整 Bash 工作流，优先在 WSL2 运行上方安装向导。若只使用 Python SSH backend，
+可手工配置 Windows OpenSSH，然后运行 `python scripts/scnet.py setup modify --mode ssh`
+接管已有别名；这不会让 Bash 安装脚本变成 Windows 原生脚本。
+
+1. 在 PowerShell 执行 `Get-Command ssh,scp,ssh-keygen`，确认 Windows OpenSSH 客户端已安装。
+2. 把下载的私钥复制到 `$env:USERPROFILE\.ssh\id_rsa_<集群>`；路径可自选，但需与配置一致。
+3. 对复制的目标私钥限制访问权限（下方路径占位符需替换）：
+
+```powershell
+$sshKeyPath = "$env:USERPROFILE\.ssh\id_rsa_<集群>"
+$sshIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+icacls $sshKeyPath /inheritance:r
+icacls $sshKeyPath /grant:r "${sshIdentity}:(R)"
+notepad "$env:USERPROFILE\.ssh\config"
+```
+
+在编辑器里追加以下块，替换为 profile 和账号中的实际值，保存为无 BOM 的 UTF-8 文本；
+保留已有无关的 Host 配置。Windows 不添加 `UseKeychain` 和 Unix socket 连接复用选项：
+
+```text
+Host <集群>
+  HostName <主机名>
+  Port <端口>
+  User <集群用户名>
+  IdentityFile ~/.ssh/id_rsa_<集群>
+  IdentitiesOnly yes
+  ServerAliveInterval 60
+  ServerAliveCountMax 3
+```
+
+先执行 `ssh -G <集群>` 核对 `hostname/user/port/identityfile`，再执行 `ssh <集群>`。
+首次主机指纹请与平台提供的指纹核对。口令私钥需要当前环境的 ssh-agent，Windows 中的
+`ssh-add` 与 WSL2 中的 ssh-agent 也互相独立。
+
 ## 手工配置
 
 ```bash

@@ -1,5 +1,6 @@
-- Generate Slurm job scripts even when the optional SSH node-count probe fails, using
-  profile/cache metadata as a fallback; add deterministic coverage for probe outcomes.
-- Correct Windows configuration-permission diagnostics and clarify WSL2 setup guidance.
-- Keep shell scripts on LF line endings across all three repositories; synchronize downstream
-  versions and README release blocks after canonical main validation succeeds.
+- Make first-time AK/SK setup explicit: validate pasted values, hide both keys, show their source,
+  and read back saved credentials before confirming persistence.
+- Support Windows Credential Manager and explain macOS Keychain, Linux keyring requirements,
+  PowerShell session scope, and the Windows/WSL2 boundary.
+- Preview SSH key installation and effective configuration, document cluster usernames and
+  key expiry, and add onboarding tests across Linux, macOS and Windows.

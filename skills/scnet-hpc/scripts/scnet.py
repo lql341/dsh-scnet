@@ -34,6 +34,8 @@ from scnet_credentials import (
     CredentialError,
     delete_openapi_credentials,
     load_openapi_credentials,
+    load_secure_credentials,
+    normalize_credential,
     secure_store_name,
     store_openapi_credentials,
 )
@@ -414,6 +416,78 @@ def _ask_secret(prompt: str) -> str:
     return getpass.getpass(f"{prompt}: ").strip()
 
 
+def _ask_credential(label: str, *, secret: bool = False, default: str = "") -> str:
+    while True:
+        value = _ask_secret(label) if secret else _ask(label, default)
+        try:
+            return normalize_credential(value, label)
+        except CredentialError as exc:
+            print(f"输入未通过检查：{exc}")
+
+
+def _credential_help() -> None:
+    provider = secure_store_name()
+    print("\n凭据保存方式（AK/SK 与 SSH 私钥是两套独立凭据）：")
+    if provider == "Windows Credential Manager":
+        print("Windows：可保存到当前用户的 Windows 凭据管理器，无需安装额外工具。")
+        print("查看/删除：控制面板 → 凭据管理器 → Windows 凭据 → 普通凭据 → scnet-hpc-openapi。")
+    elif provider == "macOS Keychain":
+        print("macOS：使用系统自带 Keychain，无需安装依赖；系统可能提示解锁或授权访问。")
+        print("可在“钥匙串访问”搜索 scnet-hpc-openapi 查看或删除。")
+    elif provider == "Secret Service":
+        print("Linux：已找到 secret-tool；保存时还需要运行且已解锁的 Secret Service 密钥环。")
+        print("仅安装 libsecret-tools 不保证密钥环可用，无桌面/无 D-Bus 的服务器可使用环境变量。")
+    else:
+        print("当前没有可用的系统凭据工具；仍可校验 AK/SK，但不会自动持久保存。")
+        print("Ubuntu/Debian：sudo apt install libsecret-tools；还需桌面密钥环服务运行并解锁。")
+    print("环境变量优先于系统凭据库；config.json/openapi.json 只保存账号与区域等非敏感信息。")
+    print("PowerShell 的 $env: 设置仅对当前会话及其子进程生效，已启动的桌面应用不会自动获得。")
+
+
+def _print_environment_help() -> None:
+    if platform.system() == "Windows":
+        print("在运行本程序的同一个 PowerShell 中注入；以下占位符需替换为真实值：")
+        print('$env:SCNET_OPENAPI_USER = "<平台用户名>"')
+        print('$env:SCNET_OPENAPI_ACCESS_KEY = "<AccessKey>"')
+        print('$env:SCNET_OPENAPI_SECRET_KEY = "<SecretKey>"')
+        print("关闭窗口后失效；日常桌面使用建议重新配置并选择系统凭据库。")
+    else:
+        print("在运行本程序的同一个 Bash/Zsh 中注入，或使用宿主的秘密注入功能：")
+        print('export SCNET_OPENAPI_USER="<平台用户名>"')
+        print('export SCNET_OPENAPI_ACCESS_KEY="<AccessKey>"')
+        print('export SCNET_OPENAPI_SECRET_KEY="<SecretKey>"')
+    print("命令中的秘密可能进入 shell 历史；不要把 AK/SK 写入仓库、普通配置或聊天。")
+
+
+def _private_key_path(value: str) -> Path:
+    value = value.strip()
+    if "PRIVATE KEY" in value or "\n" in value or "\r" in value:
+        raise BackendError("这里只接受私钥文件路径，不接受私钥正文。")
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1]
+    path = Path(value).expanduser()
+    if not value or path.suffix == ".pub":
+        raise BackendError("请选择私钥文件路径，不要选择 .pub 公钥。")
+    return path
+
+
+def _ssh_setup_help(cluster: str, profile: Mapping[str, str]) -> None:
+    print("\nSSH 私钥获取：SCNet 控制台选择目标区域 → 命令行 E-Shell → 左上角 SSH 连接。")
+    print("下载原始私钥文件（可能以 _rsa.txt 结尾），记录页面上的域名和端口，与下方目标核对。")
+    print("官方步骤：https://www2.scnet.cn/help/docs/mainsite/hpc/advanced-guide/advanced-efile/index.html")
+    print("AK/SK 授权码不能用于 SSH。集群用户名可在该区域网页 E-Shell 运行 whoami 核对。")
+    print("输入文件路径即可（支持空格和外层引号），不要粘贴私钥正文，也不要选择 .pub 公钥。")
+    print(f"连接目标：{profile.get('SSH_HOST')}:{profile.get('SSH_PORT', '22')}，别名 {cluster}。")
+    print("用户名是该区域的集群/Linux 用户名，可能与 OpenAPI 平台账号不同。")
+    print(f"自动安装位置：{Path.home() / '.ssh' / ('id_rsa_' + cluster)}")
+    print(f"SSH 配置文件：{Path.home() / '.ssh/config'}")
+    print("不同的旧私钥会备份；已有非本工具管理的 Host 块会保留，不会自动改写。")
+    if platform.system() == "Windows":
+        print("Windows 原生 OpenSSH 与 WSL2 的 ~/.ssh 互相独立；自动安装脚本需在 WSL2 内执行。")
+        print("已有 Windows OpenSSH 配置可用 setup modify 接管；手工安装步骤见 references/setup.md。")
+    print("若私钥设有口令，先用 ssh-add 加载；连接失败还需检查有效期、端口及平台 IP 白名单。")
+
+
 def _ask_yes_no(prompt: str, default: bool = True) -> bool:
     hint = "Y/n" if default else "y/N"
     answer = input(f"{prompt} [{hint}]: ").strip().lower()
@@ -708,15 +782,14 @@ def _print_terminal_help() -> None:
             )
     elif system == "Windows":
         print("Windows：输入编号并按 Enter 选择；Ctrl+C 可取消。敏感输入不会回显。")
-        print("完整脚本环境建议使用 WSL2；Git Bash 尚未作为完整环境验证。")
-        print(
-            "当前实现未接入 Windows 凭据管理器；AK/SK 请通过环境变量注入："
-            "SCNET_OPENAPI_USER / SCNET_OPENAPI_ACCESS_KEY / SCNET_OPENAPI_SECRET_KEY。"
-        )
+        print("OpenAPI 配置可直接运行 Python，并保存到 Windows 凭据管理器；无需 Bash。")
+        print("SSH 自动安装及完整 shell 脚本环境请使用 WSL2。")
     print()
 
 
 def _run_setup_ssh(cluster: str, key_path: str, username: str) -> None:
+    if platform.system() == "Windows":
+        raise BackendError("Windows 原生环境无法执行 SSH 自动安装脚本；请在 WSL2 中运行 setup，或按 references/setup.md 配置 Windows OpenSSH。")
     script = REPO_ROOT / "scripts" / "setup-ssh.sh"
     command = [str(script), "--cluster", cluster, key_path, username]
     try:
@@ -880,8 +953,10 @@ def _resolved_ssh_connection(
     }
 
 
-def _ssh_key_metadata(cluster: str, source: str, username: str) -> dict[str, Any]:
-    installed = Path.home() / ".ssh" / f"id_rsa_{cluster}"
+def _ssh_key_metadata(
+    cluster: str, source: str, username: str, *, installed_path: str | None = None
+) -> dict[str, Any]:
+    installed = Path(installed_path).expanduser() if installed_path else Path.home() / ".ssh" / f"id_rsa_{cluster}"
     metadata: dict[str, Any] = {
         "username": username,
         "key_path": str(installed),
@@ -932,7 +1007,7 @@ def _print_setup_status(config: Mapping[str, Any]) -> None:
             expiry = profile.get("key_expires_at") or "未知"
             print(
                 f"  - {name}: user={profile.get('username') or '未知'}, "
-                f"key_expires={expiry}"
+                f"key={profile.get('key_path') or '未安装/未记录'}, key_expires={expiry}"
             )
     configured_names = set(clusters) if isinstance(clusters, dict) else set()
     for item in list_profiles(REPO_ROOT):
@@ -963,6 +1038,11 @@ def _print_setup_status(config: Mapping[str, Any]) -> None:
             f"OpenAPI：user={openapi.get('platform_user') or '未知'}, "
             f"provider={openapi.get('credential_provider') or '环境变量'}"
         )
+        try:
+            active_credentials, active_provider = load_openapi_credentials()
+            print(f"  当前进程实际凭据来源：{active_provider if active_credentials else '未检测到凭据（区域缓存不等于已认证）'}")
+        except CredentialError as exc:
+            print(f"  当前凭据检查失败：{exc}")
         print(f"  已发现区域：{len(regions)}，已启用区域：{len(enabled)}")
         for region_id in enabled:
             region = regions.get(str(region_id), {})
@@ -1124,6 +1204,7 @@ def setup_panel(
         selected_cluster = cluster
         result["cluster"] = cluster
         _, profile = load_profile(REPO_ROOT, cluster)
+        _ssh_setup_help(cluster, profile)
         existing_profile = existing_clusters.get(cluster, {})
         if not isinstance(existing_profile, dict):
             existing_profile = {}
@@ -1140,17 +1221,19 @@ def setup_panel(
         key_path = ""
         if not skip_connect:
             detected_key = str(existing_profile.get("key_path") or "")
+            if platform.system() == "Windows" and not detected_connection:
+                raise BackendError("尚未检测到 Windows OpenSSH 连接。请先按 references/setup.md 手工配置，或在 WSL2 运行 SSH 安装向导。")
             if action == "modify" and detected_key:
                 rotate = _ask_yes_no(
                     "是否轮换为新的 SSH 私钥？", default=False
                 )
                 key_path = (
-                    str(Path(_ask("新私钥文件路径")).expanduser())
+                    str(_private_key_path(_ask("新私钥文件路径")))
                     if rotate
                     else detected_key
                 )
             else:
-                key_path = str(Path(_ask("私钥文件路径")).expanduser())
+                key_path = str(_private_key_path(_ask("私钥文件路径")))
             if not key_path or not Path(key_path).is_file():
                 raise BackendError(f"找不到私钥文件: {key_path}")
         detected_user = _detect_ssh_username(
@@ -1162,6 +1245,9 @@ def setup_panel(
         )
         if not username:
             raise BackendError("无法自动探测 SSH 用户名，请手工输入")
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", username):
+            raise BackendError("集群用户名包含空白或不支持的字符，请只填写用户名。")
+        print(f"配置摘要：集群={cluster}，用户={username}，私钥={key_path or '未安装（skip-connect）'}")
         clusters = dict(existing_clusters)
         clusters[cluster] = {**existing_profile, "username": username}
         result["ssh"] = {"clusters": clusters}
@@ -1181,6 +1267,8 @@ def setup_panel(
             if not _ask_yes_no(prompt, default=True):
                 print("已跳过 SSH 写入；可稍后单独运行 setup-ssh.sh。")
             elif adopted:
+                if username != detected_connection.get("username"):
+                    raise BackendError("接管时输入的用户名与现有 SSH 别名不同；请先修改 ~/.ssh/config，再重新运行 setup。")
                 completed = subprocess.run(
                     [
                         "ssh",
@@ -1202,7 +1290,7 @@ def setup_panel(
                     )
                 clusters[cluster] = {
                     **existing_profile,
-                    **_ssh_key_metadata(cluster, key_path, username),
+                    **_ssh_key_metadata(cluster, key_path, username, installed_path=key_path),
                     "adopted": True,
                 }
             else:
@@ -1238,8 +1326,16 @@ def setup_panel(
                 "官方说明：https://www.scnet.cn/ac/openapi/doc/2.0/"
                 "api/safecertification/get-user-tokens-aksk.html"
             )
-            print("SecretKey 输入时不会显示字符或星号，这是正常现象。\n")
-            saved_credentials, saved_provider = load_openapi_credentials()
+            _credential_help()
+            print("字段对应：平台用户名 = SCNet 平台用户名；AK = 下载文件的 Accesskey 列；SK = Secretkey 列。")
+            print("无需填写区域 ID 或接口地址，认证后自动发现已授权区域；账号需已开通区域资源。")
+            print("\n请依次复制平台用户名、AccessKey、SecretKey 的值；不需要输入 export 或 $env: 命令。")
+            print("AccessKey 和 SecretKey 都不会显示字符或星号；外层引号会自动去除。\n")
+            try:
+                saved_credentials, saved_provider = load_openapi_credentials()
+            except CredentialError as exc:
+                print(f"现有凭据无法使用：{exc}")
+                saved_credentials, saved_provider = None, None
             use_saved = bool(saved_credentials) and _ask_yes_no(
                 f"检测到 {saved_provider} 中的 OpenAPI 凭据，是否使用？",
                 default=True,
@@ -1250,14 +1346,17 @@ def setup_panel(
                 access_key = saved_credentials["access_key"]
                 secret_key = saved_credentials["secret_key"]
             else:
-                api_user = _ask(
+                api_user = _ask_credential(
                     "平台用户名",
-                    str(existing_openapi.get("platform_user") or ""),
+                    default=str(existing_openapi.get("platform_user") or ""),
                 )
-                access_key = _ask_secret("AccessKey")
-                secret_key = _ask_secret("SecretKey")
-                if not api_user or not access_key or not secret_key:
-                    raise BackendError("AK/SK 配置不完整")
+                while True:
+                    access_key = _ask_credential("AccessKey", secret=True)
+                    secret_key = _ask_credential("SecretKey", secret=True)
+                    if access_key != secret_key:
+                        break
+                    print("AccessKey 与 SecretKey 完全相同，可能重复粘贴了同一个字段，请重新输入。")
+            print(f"账号：{api_user}；AK/SK 已读取且不回显。下一步只读校验认证并发现授权区域。")
             backend_instance, previous = _with_openapi_credentials(
                 {},
                 user=api_user,
@@ -1335,8 +1434,8 @@ def setup_panel(
                 selected = enabled_contexts[selected_index]
             finally:
                 _restore_environment(previous)
-            stored_provider = saved_provider
-            if entered_credentials and secure_store_name():
+            stored_provider = saved_provider if use_saved else None
+            if (entered_credentials or saved_provider == "environment") and secure_store_name():
                 if _ask_yes_no(
                     f"是否将 AK/SK 保存到 {secure_store_name()}？",
                     default=True,
@@ -1345,10 +1444,22 @@ def setup_panel(
                         provider = store_openapi_credentials(
                             api_user, access_key, secret_key
                         )
+                        expected = {"user": api_user, "access_key": access_key, "secret_key": secret_key}
+                        if load_secure_credentials() != expected:
+                            raise CredentialError("保存后读回校验失败；尚不能确认凭据已持久保存。")
                         stored_provider = provider
                         print(f"OpenAPI 凭据已保存到 {provider}。")
                     except CredentialError as exc:
                         print(f"无法保存到安全凭据库：{exc}")
+            if stored_provider is None:
+                print("凭据未保存：本次认证已完成，但后续命令仍需注入环境变量或重新保存 AK/SK。")
+                _print_environment_help()
+            elif stored_provider == "environment":
+                print("凭据来源：当前进程环境变量；未另存到系统凭据库，重启后需由宿主重新注入。")
+            else:
+                print(f"持久保存已验证：{stored_provider}；条目名 scnet-hpc-openapi。")
+                if any(os.environ.get(key) for key in ("SCNET_OPENAPI_USER", "SCNET_OPENAPI_ACCESS_KEY", "SCNET_OPENAPI_SECRET_KEY")):
+                    print("注意：当前 shell 仍有环境变量，它们优先于刚保存的凭据；请清除旧变量后运行 doctor。")
             selected_schedulers = selected.get("schedulers") or []
             default_scheduler = (
                 selected_schedulers[0].get("id")
@@ -1357,7 +1468,7 @@ def setup_panel(
             )
             result["openapi"] = {
                 "platform_user": api_user,
-                "credential_provider": stored_provider,
+                "credential_provider": stored_provider or "not_saved",
                 "default_region_id": selected["region_id"],
                 "enabled_region_ids": [
                     item["region_id"] for item in enabled_contexts
@@ -1378,7 +1489,7 @@ def setup_panel(
                 },
             }
             print(
-                "\nHPC OpenAPI 配置完成：\n"
+                "\nHPC OpenAPI 区域选择结果（凭据状态见上方）：\n"
                 f"  默认区域：{selected.get('name') or selected['region_id']}"
                 f" ({selected['region_id']})\n"
                 f"  区域用户：{selected.get('username')}\n"
@@ -1393,11 +1504,10 @@ def setup_panel(
     path = save_user_config(result)
     print(f"\n已保存非敏感配置：{path}")
     print("后续可用 `python3 scripts/scnet.py config` 查看。")
-    if configure_openapi and not secure_store_name():
-        print("系统没有可用安全凭据库；请通过环境变量注入 AK/SK。")
     doctor_cluster = selected_cluster or str(current.get("cluster") or "")
     suffix = f" --cluster {shlex.quote(doctor_cluster)}" if doctor_cluster else ""
-    print(f"下一步：python3 scripts/scnet.py{suffix} doctor")
+    interpreter = "python" if platform.system() == "Windows" else "python3"
+    print(f"下一步：{interpreter} scripts/scnet.py --backend {default_backend}{suffix} doctor")
     return result
 
 
@@ -1460,18 +1570,29 @@ def doctor_report(
         if alias and shutil.which("ssh"):
             completed = subprocess.run(
                 ["ssh", "-G", alias],
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 check=False,
             )
-            add(
-                "ssh_config",
-                completed.returncode == 0,
-                f"alias={alias}"
-                if completed.returncode == 0
-                else completed.stderr.strip(),
+            resolved = {}
+            for line in completed.stdout.splitlines():
+                field, _, value = line.partition(" ")
+                if field in {"hostname", "port", "user", "identityfile"}:
+                    resolved.setdefault(field, value)
+            config_ok = (
+                completed.returncode == 0
+                and resolved.get("hostname") == profile.get("SSH_HOST")
+                and resolved.get("port") == str(profile.get("SSH_PORT") or "22")
             )
+            detail = (
+                f"alias={alias}, host={resolved.get('hostname', '未知')}, "
+                f"port={resolved.get('port', '未知')}, user={resolved.get('user', '未知')}, "
+                f"key={resolved.get('identityfile', '未配置')}"
+            )
+            if not config_ok:
+                detail += "; 别名未解析到 profile 的主机/端口，请检查当前环境的 ~/.ssh/config"
+            add("ssh_config", config_ok, detail)
             if not no_network:
                 completed = subprocess.run(
                     [
@@ -1537,7 +1658,11 @@ def doctor_report(
 
     elif backend_name == "openapi":
         has_token = bool(os.environ.get("SCNET_OPENAPI_TOKEN"))
-        credentials, credential_provider = load_openapi_credentials()
+        try:
+            credentials, credential_provider = load_openapi_credentials()
+        except CredentialError as exc:
+            credentials, credential_provider = None, None
+            add("credential_store", False, str(exc))
         has_aksk = bool(credentials)
         add(
             "openapi_credentials",
@@ -1547,7 +1672,7 @@ def doctor_report(
             else (
                 f"检测到 AK/SK（{credential_provider}）"
                 if has_aksk
-                else "未检测到 OpenAPI 凭据"
+                else "未检测到可用凭据；运行 setup new/modify --mode openapi，或同时注入三项环境变量"
             ),
         )
         openapi_config = user_config.get("openapi", {})
@@ -1757,7 +1882,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.operation == "doctor" and not data.get("ok", False):
             return 1
         return 0
-    except BackendError as exc:
+    except (KeyboardInterrupt, EOFError):
+        print("\n已取消输入；未完成的配置请重新运行 setup。", file=sys.stderr)
+        return 130
+    except (BackendError, CredentialError) as exc:
         if args.json:
             print(
                 json.dumps(

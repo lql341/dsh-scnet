@@ -11,6 +11,13 @@ available through the API. Never silently switch backends.
 
 ## First use and selection
 
+- On first use or missing credentials, read `references/first-use.md` and explain in the user's
+  language what is needed, where to obtain it, and the next local command before starting setup.
+  Prefer OpenAPI (platform username + AK/SK); request SSH credentials only for SSH operations.
+  Explain-only/offline work needs no credentials. Reuse working configuration without re-entry.
+- Never request AK/SK or private-key contents in chat. Give a command using the resolved absolute
+  Skill path so users can enter secrets in their own terminal; do not launch hidden prompts in
+  an agent tool session. Read `references/openapi.md` or `references/setup.md` for backend details.
 - Run `scripts/setup.sh new|modify|status|reset` for explicit configuration lifecycle.
   OpenAPI setup requires Python 3. With no saved preference, default to OpenAPI; credentials
   can come from environment variables or the supported OS credential store.

@@ -14,7 +14,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from scnet_backends.base import BackendContext, BackendError
-from scnet_credentials import load_openapi_credentials
+from scnet_credentials import CredentialError, load_openapi_credentials
 from scnet_version import VERSION
 
 
@@ -215,16 +215,13 @@ class SCNetClient:
             ]
             return self._regions_cache
 
-        credentials, _ = load_openapi_credentials()
-        user = self.env("SCNET_OPENAPI_USER") or (
-            credentials.get("user") if credentials else None
-        )
-        access_key = self.env("SCNET_OPENAPI_ACCESS_KEY") or (
-            credentials.get("access_key") if credentials else None
-        )
-        secret_key = self.env("SCNET_OPENAPI_SECRET_KEY") or (
-            credentials.get("secret_key") if credentials else None
-        )
+        try:
+            credentials, _ = load_openapi_credentials()
+        except CredentialError as exc:
+            raise BackendError(str(exc)) from None
+        user = credentials.get("user") if credentials else None
+        access_key = credentials.get("access_key") if credentials else None
+        secret_key = credentials.get("secret_key") if credentials else None
         missing = [
             name
             for name, value in (

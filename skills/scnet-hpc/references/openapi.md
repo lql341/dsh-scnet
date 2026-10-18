@@ -26,10 +26,48 @@ Obtain AK/SK from the SCNet website:
 3. Open **Access Control / 访问控制**.
 4. Generate and download the authorization file containing AccessKey and SecretKey.
 
+Use the platform username for `user`, the downloaded file's `Accesskey` column for AK,
+and its `Secretkey` column for SK. Copy each value separately, without column labels or shell
+assignments. These credentials differ from both cluster/Linux usernames and model-service API keys.
+For the initial user briefing and commands that work outside the Skill directory, read
+[first-use.md](first-use.md).
+
 Official instructions:
 <https://www.scnet.cn/ac/openapi/doc/2.0/api/safecertification/get-user-tokens-aksk.html>
 
-Preferred environment variables:
+## Guided first-time setup
+
+Run `python3 scripts/scnet.py setup new --mode openapi` on macOS/Linux, or
+`python scripts/scnet.py setup new --mode openapi` in Windows PowerShell.
+Use `setup modify --mode openapi` to replace credentials for an existing setup.
+
+Copy only each field's value, one at a time: platform login user, AccessKey, then SecretKey.
+The cluster/Linux username is discovered later and may differ. Both key inputs are invisible;
+surrounding quotes are removed, while pasted shell assignments, multiline values, and invisible
+characters are rejected with a retry. The wizard does not display either key.
+
+| Environment | Where persistent AK/SK are stored | Dependency and recovery |
+|---|---|---|
+| macOS | Login user's Keychain, service `scnet-hpc-openapi` | Built-in `security`; allow access/unlock when prompted; find the item in Keychain Access |
+| Linux desktop | Secret Service, service `scnet-hpc-openapi` | Ubuntu/Debian: `sudo apt install libsecret-tools`; a running, unlocked keyring and session D-Bus are also needed |
+| Linux headless / CI | Host-injected environment | No `libsecret-tools` required for API calls; installing the package alone does not create a working keyring |
+| Native Windows | Current user's Windows Credential Manager, Generic Credential `scnet-hpc-openapi` | Built in; manage through Control Panel > Credential Manager > Windows Credentials |
+| WSL2 | Linux credentials inside WSL2 | Windows Credential Manager and Windows environment changes are not automatically shared |
+
+Saving is optional and happens after authentication. A saved item is read back before persistence is
+reported as verified. If saving fails or is declined, **region setup is not credential persistence**:
+the panel records `not_saved` and explains how to provide credentials for subsequent commands.
+Use `setup status` for metadata and the actual credential source visible to the current process;
+use `doctor --no-network` for local checks or `doctor` for a read-only connection check.
+`setup reset` can delete the credential-store item separately from region metadata.
+
+### Environment injection
+
+Set all three variables together. A partial set is rejected instead of mixing one account's
+username/key with another account's saved credential set. Environment values take precedence over
+the system store; clear stale overrides after saving replacement credentials.
+
+Bash/Zsh, in the same terminal that will launch the client:
 
 ```bash
 export SCNET_OPENAPI_USER="<platform-user>"
@@ -37,10 +75,31 @@ export SCNET_OPENAPI_ACCESS_KEY="<access-key>"
 export SCNET_OPENAPI_SECRET_KEY="<secret-key>"
 ```
 
+PowerShell, in the same window that will launch the client:
+
+```powershell
+$env:SCNET_OPENAPI_USER = "<platform-user>"
+$env:SCNET_OPENAPI_ACCESS_KEY = "<access-key>"
+$env:SCNET_OPENAPI_SECRET_KEY = "<secret-key>"
+python scripts/scnet.py --backend openapi doctor
+```
+
+These `$env:` assignments last only for the current PowerShell session and its subsequently launched
+children. Already-running desktop applications do not receive them. Prefer the interactive wizard and
+Windows Credential Manager for daily desktop use. Do not use plaintext shell profiles, `setx`, or
+checked-in environment files as the default credential store. Commands containing real secrets may
+be recorded in shell history; host-managed secret injection avoids manual command entry.
+
+To stop overriding the store in PowerShell:
+
+```powershell
+Remove-Item Env:SCNET_OPENAPI_USER,Env:SCNET_OPENAPI_ACCESS_KEY,Env:SCNET_OPENAPI_SECRET_KEY -ErrorAction SilentlyContinue
+```
+
 The client signs the canonical AK/timestamp/user JSON with HMAC-SHA256 when requesting
 region tokens. Tokens are reused from a permission-restricted disk cache for up to four hours
 when available; an expired or unavailable cache triggers authentication. The setup panel can store the
-platform credential set in macOS Keychain or Linux Secret Service; otherwise use environment
+platform credential set in macOS Keychain, Linux Secret Service, or Windows Credential Manager; otherwise use environment
 variables. Region IDs, region users, schedulers, and home paths are discovered and cached as
 non-secret metadata.
 

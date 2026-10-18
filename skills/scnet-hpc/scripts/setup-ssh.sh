@@ -48,6 +48,7 @@ if [ -z "$USER_NAME" ] && [ -n "${KEY_NAME_MARKER:-}" ]; then
     esac
 fi
 [ -n "$USER_NAME" ] || die "无法从文件名推断用户名，请作为最后一个参数传入"
+[[ "$USER_NAME" =~ ^[A-Za-z0-9._-]+$ ]] || die "远端用户名包含空白或不安全字符"
 
 echo "==> 集群: ${CLUSTER_ID} (${CLUSTER_DESC:-$SSH_HOST})"
 echo "==> 用户名: ${USER_NAME}"
@@ -75,12 +76,12 @@ if [ "$(uname -s)" = "Darwin" ]; then
 fi
 info "$KEY_DST (600)"
 
-if ssh-keygen -y -f "$KEY_DST" > "$KEY_DST.pub" 2>/dev/null; then
+if ssh-keygen -y -P '' -f "$KEY_DST" > "$KEY_DST.pub" 2>/dev/null; then
     chmod 644 "$KEY_DST.pub"
     info "$(ssh-keygen -lf "$KEY_DST" 2>/dev/null | awk '{print $1, $2, $4}')"
 else
     rm -f "$KEY_DST.pub"
-    info "私钥有 passphrase，跳过公钥推导"
+    info "无法用空口令解析私钥：如有口令，请先运行 ssh-add；如未设置口令，请检查文件是否损坏。"
 fi
 
 # ---------------------------------------------------------------- config
@@ -166,6 +167,9 @@ EOF
 fi
 
 # ---------------------------------------------------------------- 验证
+echo "==> 实际生效的 SSH 参数（来自 ssh -G；不显示私钥内容）"
+ssh -G "$CLUSTER_ID" 2>/dev/null \
+    | awk '$1 == "hostname" || $1 == "user" || $1 == "port" || $1 == "identityfile" { print "  " $0 }'
 echo "==> 测试连接"
 if out=$(ssh -o BatchMode=yes -o ConnectTimeout=20 \
              -o StrictHostKeyChecking=accept-new \

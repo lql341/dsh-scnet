@@ -4,16 +4,17 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.11**
+Current release: **0.6.12**
 
 <!-- scnet-release:start -->
-## 0.6.11 highlights
+## 0.6.12 highlights
 
-- Generate Slurm job scripts even when the optional SSH node-count probe fails, using
-  profile/cache metadata as a fallback; add deterministic coverage for probe outcomes.
-- Correct Windows configuration-permission diagnostics and clarify WSL2 setup guidance.
-- Keep shell scripts on LF line endings across all three repositories; synchronize downstream
-  versions and README release blocks after canonical main validation succeeds.
+- Make first-time AK/SK setup explicit: validate pasted values, hide both keys, show their source,
+  and read back saved credentials before confirming persistence.
+- Support Windows Credential Manager and explain macOS Keychain, Linux keyring requirements,
+  PowerShell session scope, and the Windows/WSL2 boundary.
+- Preview SSH key installation and effective configuration, document cluster usernames and
+  key expiry, and add onboarding tests across Linux, macOS and Windows.
 <!-- scnet-release:end -->
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.
