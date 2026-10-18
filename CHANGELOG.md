@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.11 - 2026-10-18
+
+- Keep Slurm job generation working when the optional SSH node-count probe fails;
+  preserve profile/cache metadata and cover probe outcomes with deterministic SSH mocks.
+- Skip POSIX file-mode checks on Windows without claiming ACL verification, and clarify
+  Windows setup guidance and the recommended WSL2 environment.
+- Enforce LF line endings for shell scripts in the canonical and distribution repositories.
+- Start downstream synchronization only after canonical main validation succeeds, and publish
+  aligned 0.6.11 versions with generated English and Chinese README release blocks.
+
 ## 0.6.10 - 2026-10-15
 
 - Coordinate the synchronized downstream DSH release with a protocol-neutral one-shot loopback

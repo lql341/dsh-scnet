@@ -53,10 +53,12 @@ refresh_live_node_count() {
     [ -n "${CLUSTER_ID:-}" ] || return 0
     [ -n "${PARTITION:-}" ] || return 0
 
-    local live
+    # Live metadata is optional; a failed SSH probe must not trigger callers'
+    # errexit/pipefail settings or discard the existing profile/cache value.
+    local live=""
     live=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
         "$CLUSTER_ID" "scontrol show partition ${PARTITION}" 2>/dev/null \
-        | tr ' ' '\n' | sed -n 's/^TotalNodes=//p' | head -1)
+        | tr ' ' '\n' | sed -n 's/^TotalNodes=//p' | head -1) || live=""
 
     if [[ "$live" =~ ^[0-9]+$ ]] && [ "$live" -gt 0 ]; then
         NODE_COUNT="$live"

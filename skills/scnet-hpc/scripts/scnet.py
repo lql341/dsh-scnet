@@ -706,6 +706,13 @@ def _print_terminal_help() -> None:
                 "Linux：使用 ↑/↓ 和 Enter，也可输入编号；"
                 "Ctrl+C 可取消。敏感输入不会回显。"
             )
+    elif system == "Windows":
+        print("Windows：输入编号并按 Enter 选择；Ctrl+C 可取消。敏感输入不会回显。")
+        print("完整脚本环境建议使用 WSL2；Git Bash 尚未作为完整环境验证。")
+        print(
+            "当前实现未接入 Windows 凭据管理器；AK/SK 请通过环境变量注入："
+            "SCNET_OPENAPI_USER / SCNET_OPENAPI_ACCESS_KEY / SCNET_OPENAPI_SECRET_KEY。"
+        )
     print()
 
 
@@ -1411,12 +1418,19 @@ def doctor_report(
     try:
         path = config_path()
         if path.is_file():
-            mode = path.stat().st_mode & 0o777
-            add(
-                "user_config",
-                mode & 0o077 == 0,
-                f"{path} mode={mode:03o}",
-            )
+            if os.name == "posix":
+                mode = path.stat().st_mode & 0o777
+                add(
+                    "user_config",
+                    mode & 0o077 == 0,
+                    f"{path} mode={mode:03o}",
+                )
+            else:
+                add(
+                    "user_config",
+                    True,
+                    f"{path}（非 POSIX，跳过 mode 检查；未验证 ACL）",
+                )
         else:
             add("user_config", False, f"{path} 不存在；先运行 setup")
     except OSError as exc:
