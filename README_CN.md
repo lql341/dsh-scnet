@@ -4,20 +4,35 @@
 
 <p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）：配置 SSH、管理 Slurm 作业、查询 OpenAPI 区域和文件、检查 Notebook 资源与实例，并保留海光 DCU/DTK 诊断能力。</p>
 
-当前版本：**0.6.12**
+当前版本：**0.6.13**
 
 <!-- scnet-release:start -->
-## 0.6.12 更新
+## 0.6.13 更新
 
-- 优化首次 AK/SK 配置：检查粘贴错误、隐藏双密钥、显示实际来源，保存后读回验证，
-  明确区分区域元数据与凭据持久保存。
-- 支持 Windows 凭据管理器，解释 macOS Keychain、Linux 密钥环依赖、PowerShell 会话
-  作用域与 Windows/WSL2 环境隔离。
-- 提前展示 SSH 私钥安装计划与实际配置，补充集群用户名、密钥有效期和 Windows OpenSSH
-  指引，并增加 Linux、macOS、Windows 三平台配置回归测试。
+- Windows 凭据条目编码损坏时给出清晰、隐藏秘密的恢复指引。
+- 配置结束后提供可从任意目录运行的绝对路径命令，正确处理空格和 shell 特殊字符。
+- 将首次使用准备清单同步到两个分发仓库的中英文 README，明确 Windows 原生 OpenAPI
+  支持，并为两种目录布局增加文档生成回归检查。
 <!-- scnet-release:end -->
 
 > 本项目是独立维护的社区项目，与 DeepSeek Harness 兼容，但不是 DeepSeek 官方产品，也不表示 DeepSeek 对本项目提供背书、合作或授权。
+
+<!-- scnet-onboarding:start -->
+## 第一次使用，需要准备什么？
+
+建议先用 **OpenAPI** 完成查询和作业管理；需要远程编译、安装环境或执行 shell 时再配置 SSH。
+
+| 连接方式 | 需要填写 | 从哪里获取 |
+| --- | --- | --- |
+| OpenAPI（默认） | 平台用户名、AK、SK | 登录 SCNet → 个人中心 → 访问控制 → 生成并下载授权码；AK/SK 分别取文件的 `Accesskey` / `Secretkey` 列 |
+| SSH（按需） | 目标集群、集群/Linux 用户名、私钥文件路径 | 控制台选择目标区域 → 命令行 E-Shell → 左上角 SSH 连接 → 下载私钥并核对域名、端口；用户名可用网页 E-Shell 的 `whoami` 核对 |
+
+账号需已开通目标区域资源。两种凭据独立，按当前任务准备即可；阅读说明、离线准备无需凭据。
+**AK/SK 只在本机终端的隐藏输入框填写；SSH 填下载文件路径，不要将密钥或私钥正文发到聊天。**
+
+向 Agent 说“帮我首次配置 scnet-hpc”即可；Skill 会先说明所需字段及获取位置，再给当前系统、
+实际安装目录对应的本机命令。详见[首次使用清单](skills/scnet-hpc/references/first-use.md)。
+<!-- scnet-onboarding:end -->
 
 ## 这是什么
 

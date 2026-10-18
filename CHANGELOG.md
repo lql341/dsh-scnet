@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.13 - 2026-10-18
+
+- Recover from invalid Windows credential-store encodings with redacted instructions instead
+  of an uncaught decode error; include Windows Credential Manager in reset choices.
+- Print absolute, shell-quoted follow-up commands after setup, so users can run config and
+  doctor from any working directory, including installation paths with spaces or apostrophes.
+- Synchronize the first-use preparation checklist into both distribution repositories' English
+  and Chinese READMEs, preserve installation instructions, and clarify native Windows OpenAPI support.
+- Extend regression coverage to credential decoding, executable PowerShell follow-up commands,
+  and repeatable onboarding document generation for both distribution layouts.
+
 ## 0.6.12 - 2026-10-18
 
 - Explain required inputs and their official download locations before first-time setup in
