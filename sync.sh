@@ -50,3 +50,7 @@ chmod +x "$DST/scripts/scnet.py"
 
 echo "已同步：$SRC -> $DST"
 find "$DST" -maxdepth 2 -print | sort
+
+if [ -f "$SRC/.gitattributes" ]; then
+  cp "$SRC/.gitattributes" "$DST/../../.gitattributes"
+fi
