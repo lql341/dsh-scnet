@@ -75,6 +75,11 @@ def _windows_credential(action: str, payload: str = "", user: str = "") -> str |
         if success:
             try:
                 return ctypes.string_at(item.contents.CredentialBlob, item.contents.CredentialBlobSize).decode("utf-8")
+            except UnicodeDecodeError:
+                raise CredentialError(
+                    "Windows 中已保存的 OpenAPI 凭据编码无效；请运行 setup modify --mode openapi 重新配置，"
+                    "或在凭据管理器删除 scnet-hpc-openapi 条目后重试。"
+                ) from None
             finally:
                 api.CredFree(item)
     elif action == "write":

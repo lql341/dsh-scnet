@@ -4,27 +4,45 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.12**
+Current release: **0.6.13**
 
 <!-- scnet-release:start -->
-## 0.6.12 highlights
+## 0.6.13 highlights
 
-- Make first-time AK/SK setup explicit: validate pasted values, hide both keys, show their source,
-  and read back saved credentials before confirming persistence.
-- Support Windows Credential Manager and explain macOS Keychain, Linux keyring requirements,
-  PowerShell session scope, and the Windows/WSL2 boundary.
-- Preview SSH key installation and effective configuration, document cluster usernames and
-  key expiry, and add onboarding tests across Linux, macOS and Windows.
+- Recover malformed Windows credential entries with actionable, redacted guidance.
+- Print absolute follow-up commands that work from any directory, with shell-appropriate quoting.
+- Synchronize first-use preparation checklists into both distribution READMEs and clarify
+  native Windows OpenAPI support, with regression coverage for both layouts.
 <!-- scnet-release:end -->
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.
+
+<!-- scnet-onboarding:start -->
+## What to prepare for first use
+
+Start with **OpenAPI** for queries and standard job management. Add SSH when you need remote
+compilation, environment installation, or shell commands.
+
+| Connection | Required inputs | Where to obtain them |
+| --- | --- | --- |
+| OpenAPI (default) | Platform username, AK, SK | Sign in to SCNet > Personal Center / 个人中心 > Access Control / 访问控制 > generate and download the authorization file. Use its `Accesskey` and `Secretkey` columns. |
+| SSH (as needed) | Target cluster, cluster/Linux username, private-key file path | Select the region in the console > Command Line E-Shell / 命令行 E-Shell > SSH Connection / SSH 连接 at top left. Download the key and check host/port; verify the username with `whoami` in that region's web E-Shell. |
+
+Your account needs access to the target region. Prepare credentials for the chosen connection;
+explanations and offline preparation require none. **Enter AK/SK only in your own terminal's hidden
+prompts. For SSH, supply a local file path. Keep keys and private-key contents out of chat.**
+
+Ask your agent to help configure scnet-hpc for the first time. The Skill explains the inputs and
+their sources before providing a local command for your OS and actual installation directory.
+See the [first-use checklist](skills/scnet-hpc/references/first-use.md).
+<!-- scnet-onboarding:end -->
 
 ## Requirements
 
 - Node.js 22.19 or later
 - DeepSeek Harness (`dsh`)
 - Linux or macOS for native shell execution
-- Windows through WSL2; native Windows execution is not supported by the bundled Bash scripts
+- Native Windows supports Python OpenAPI and Windows Credential Manager; use WSL2 for automatic SSH installation and Bash workflows
 - An SCNet account and cluster credentials for remote operations
 
 ## Install

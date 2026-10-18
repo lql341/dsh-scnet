@@ -444,6 +444,16 @@ def _credential_help() -> None:
     print("PowerShell 的 $env: 设置仅对当前会话及其子进程生效，已启动的桌面应用不会自动获得。")
 
 
+def _local_cli_command(*arguments: str) -> str:
+    """Render a command the user can paste from any working directory."""
+    interpreter = "python" if platform.system() == "Windows" else "python3"
+    parts = [interpreter, str((REPO_ROOT / "scripts" / "scnet.py").resolve()), *arguments]
+    if platform.system() == "Windows":
+        # PowerShell single-quoted literals do not expand $, backticks or subexpressions.
+        return " ".join("'" + part.replace("'", "''") + "'" if index else part for index, part in enumerate(parts))
+    return shlex.join(parts)
+
+
 def _print_environment_help() -> None:
     if platform.system() == "Windows":
         print("在运行本程序的同一个 PowerShell 中注入；以下占位符需替换为真实值：")
@@ -1057,7 +1067,7 @@ def _print_setup_status(config: Mapping[str, Any]) -> None:
 def _setup_reset_panel(config: dict[str, Any]) -> dict[str, Any]:
     choices = [
         "OpenAPI 区域缓存和默认项",
-        "OpenAPI 安全凭据（Keychain/Secret Service）",
+        "OpenAPI 安全凭据（Windows 凭据管理器/Keychain/Secret Service）",
         "一个 SSH profile 的本地元数据",
         "全部 SCNet HPC 本地元数据（不删除真实 SSH key/config）",
     ]
@@ -1503,11 +1513,12 @@ def setup_panel(
         result["cluster"] = selected_cluster
     path = save_user_config(result)
     print(f"\n已保存非敏感配置：{path}")
-    print("后续可用 `python3 scripts/scnet.py config` 查看。")
+    print(f"查看配置：{_local_cli_command('config')}")
     doctor_cluster = selected_cluster or str(current.get("cluster") or "")
-    suffix = f" --cluster {shlex.quote(doctor_cluster)}" if doctor_cluster else ""
-    interpreter = "python" if platform.system() == "Windows" else "python3"
-    print(f"下一步：{interpreter} scripts/scnet.py --backend {default_backend}{suffix} doctor")
+    arguments = ["--backend", default_backend]
+    if doctor_cluster:
+        arguments.extend(["--cluster", doctor_cluster])
+    print(f"下一步：{_local_cli_command(*arguments, 'doctor')}")
     return result
 
 
