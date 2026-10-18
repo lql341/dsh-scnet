@@ -89,8 +89,9 @@ def save_user_config(data: dict[str, Any]) -> Path:
         prefix=".config.", suffix=".tmp", dir=str(path.parent)
     )
     try:
-        os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            if os.name == "posix":
+                os.fchmod(stream.fileno(), 0o600)
             json.dump(clean, stream, ensure_ascii=False, indent=2, sort_keys=True)
             stream.write("\n")
         os.replace(temporary, path)
@@ -110,8 +111,9 @@ def _save_json_sidecar(path: Path, data: dict[str, Any]) -> Path:
         prefix=f".{path.stem}.", suffix=".tmp", dir=str(path.parent)
     )
     try:
-        os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            if os.name == "posix":
+                os.fchmod(stream.fileno(), 0o600)
             json.dump(clean, stream, ensure_ascii=False, indent=2, sort_keys=True)
             stream.write("\n")
         os.replace(temporary, path)

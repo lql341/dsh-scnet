@@ -365,6 +365,11 @@ case "$(uname -s)" in
             printf '%s\n' "Linux：使用 ↑/↓ 和 Enter，也可输入编号；Ctrl+C 可取消。" >&2
         fi
         ;;
+    MINGW*|MSYS*|CYGWIN*)
+        printf '%s\n' \
+            "Windows：OpenAPI 可在 PowerShell 中运行 python scripts/scnet.py setup，并使用系统凭据管理器。" \
+            "SSH 自动安装请在 WSL2 内运行；WSL2 与 Windows OpenSSH 的私钥目录互相独立。" >&2
+        ;;
 esac
 printf '\n' >&2
 
@@ -478,8 +483,16 @@ if [ "$BACKEND" = both ]; then
 fi
 
 if [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; then
+    printf '%s\n' \
+        "SSH 使用从目标集群控制台下载的私钥文件，不是 AK/SK 授权码，也不是 .pub 公钥。" \
+        "用户名应为集群/Linux 用户名；输入私钥文件路径，不要粘贴文件正文。" \
+        "将安装到 $HOME/.ssh/id_rsa_${CLUSTER_ID}，配置 $HOME/.ssh/config；不同旧私钥会备份。" \
+        "已有非本工具管理的 Host 块会保留；口令私钥请先 ssh-add，过期密钥需重新下载。" >&2
     if [ "$SKIP_CONNECT" = no ]; then
         SSH_KEY="${SSH_KEY:-$(ask "私钥文件路径")}"
+        case "$SSH_KEY" in
+            \"*\"|\'*\') SSH_KEY="${SSH_KEY:1:${#SSH_KEY}-2}" ;;
+        esac
         SSH_KEY="${SSH_KEY/#\~/$HOME}"
         [ -f "$SSH_KEY" ] || die "找不到私钥文件: $SSH_KEY"
     fi
