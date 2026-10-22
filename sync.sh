@@ -48,6 +48,16 @@ chmod +x "$DST/scripts/"*.sh
 chmod +x "$DST/scripts/scnet.py"
 chmod +x "$DST/scripts/scnet.py"
 
+commit="$(git -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
+cat > "$DST/SOURCE.json" <<JSON
+{
+  "repository": "https://github.com/lql341/scnet-hpc",
+  "commit": "$commit",
+  "version": "$(cat "$SRC/VERSION")",
+  "note": "Generated from the canonical scnet-hpc repository; run sync.sh to refresh."
+}
+JSON
+
 echo "已同步：$SRC -> $DST"
 find "$DST" -maxdepth 2 -print | sort
 

@@ -6,6 +6,8 @@
   profile, then stored user config; report the source in `doctor`.
 - Keep `doctor` offline behavior unchanged while making the environment/profile
   override visible and testable.
+- Record the canonical scnet-hpc source commit in `skills/scnet-hpc/SOURCE.json`;
+  `sync.sh` refreshes it with the rest of the bundle.
 
 ## 0.6.13 - 2026-10-18
 
