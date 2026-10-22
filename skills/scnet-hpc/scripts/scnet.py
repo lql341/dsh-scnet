@@ -124,6 +124,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="check local configuration only",
     )
+    doctor.add_argument(
+        "--queue",
+        action="append",
+        default=[],
+        help="queue that must be present in the selected region; repeatable",
+    )
 
     limits = subparsers.add_parser("limits", help="show scheduler or user resource limits")
     limits.add_argument("--partition")
@@ -1530,6 +1536,8 @@ def doctor_report(
     *,
     no_network: bool,
     timeout: int,
+    requested_region: str | None = None,
+    requested_queues: list[str] | None = None,
 ) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
 
@@ -1687,6 +1695,8 @@ def doctor_report(
             ),
         )
         openapi_config = user_config.get("openapi", {})
+        requested_region = (requested_region or "").strip() or None
+        requested_queues = [str(item) for item in (requested_queues or []) if str(item)]
         environment_region = os.environ.get("SCNET_OPENAPI_REGION_ID")
         profile_region = profile.get("OPENAPI_REGION_ID")
         stored_region = (
@@ -1697,9 +1707,11 @@ def doctor_report(
             if isinstance(openapi_config, dict)
             else None
         )
-        region = environment_region or profile_region or stored_region
+        region = requested_region or environment_region or profile_region or stored_region
         region_source = (
-            "environment"
+            "cli"
+            if requested_region
+            else "environment"
             if environment_region
             else "profile"
             if profile_region
@@ -1712,6 +1724,12 @@ def doctor_report(
             bool(region),
             f"{region or '未配置区域'} (source={region_source})",
         )
+        if no_network and requested_queues:
+            add(
+                "openapi_queue_binding",
+                False,
+                "queue binding requires network access",
+            )
         cached_regions = (
             openapi_config.get("regions")
             if isinstance(openapi_config, dict)
@@ -1742,6 +1760,20 @@ def doctor_report(
                     }
                     queues = backend.execute("queues", options)
                     add("openapi_queues", True, f"可访问队列数={len(queues)}")
+                    names = {
+                        str(item.get("partition") or item.get("name") or "")
+                        for item in queues
+                        if isinstance(item, dict)
+                    }
+                    missing = [item for item in requested_queues if item not in names]
+                    add(
+                        "openapi_queue_binding",
+                        not missing,
+                        "selected queues present"
+                        if not missing
+                        else "missing queue(s) in selected region: "
+                        + ", ".join(missing),
+                    )
             except BackendError as exc:
                 add("openapi_connection", False, str(exc))
 
@@ -1874,6 +1906,8 @@ def main(argv: list[str] | None = None) -> int:
                     user_config,
                     no_network=args.no_network,
                     timeout=args.timeout,
+                    requested_region=args.region,
+                    requested_queues=args.queue,
                 )
             elif args.operation == "capabilities":
                 data = {

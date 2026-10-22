@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.15 - 2026-10-22
+
+- Sync scnet-hpc 0.6.15: doctor accepts explicit region and repeated queues,
+  verifies queue binding, and records the region source.
+- Refresh the canonical source commit metadata.
+
 ## 0.6.14 - 2026-10-22
 
 - Resolve the OpenAPI region from `SCNET_OPENAPI_REGION_ID`, then the selected
