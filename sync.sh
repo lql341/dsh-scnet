@@ -49,7 +49,7 @@ chmod +x "$DST/scripts/scnet.py"
 chmod +x "$DST/scripts/scnet.py"
 
 commit="$(git -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
-cat > "$DST/SOURCE.json" <<JSON
+cat > "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/SCNET_HPC_SOURCE.json" <<JSON
 {
   "repository": "https://github.com/lql341/scnet-hpc",
   "commit": "$commit",
