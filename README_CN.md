@@ -4,10 +4,10 @@
 
 <p align="center">在 DeepSeek Harness 里操作超算互联网（SCNet）：配置 SSH、管理 Slurm 作业、查询 OpenAPI 区域和文件、检查 Notebook 资源与实例，并保留海光 DCU/DTK 诊断能力。</p>
 
-当前版本：**0.6.14**
+当前版本：**0.6.15**
 
 <!-- scnet-release:start -->
-## 0.6.14 更新
+## 0.6.15 更新
 
 - Windows 凭据条目编码损坏时给出清晰、隐藏秘密的恢复指引。
 - 配置结束后提供可从任意目录运行的绝对路径命令，正确处理空格和 shell 特殊字符。
