@@ -1687,7 +1687,9 @@ def doctor_report(
             ),
         )
         openapi_config = user_config.get("openapi", {})
-        region = (
+        environment_region = os.environ.get("SCNET_OPENAPI_REGION_ID")
+        profile_region = profile.get("OPENAPI_REGION_ID")
+        stored_region = (
             (
                 openapi_config.get("default_region_id")
                 or openapi_config.get("region_id")
@@ -1695,7 +1697,21 @@ def doctor_report(
             if isinstance(openapi_config, dict)
             else None
         )
-        add("openapi_region", bool(region), str(region or "未配置区域"))
+        region = environment_region or profile_region or stored_region
+        region_source = (
+            "environment"
+            if environment_region
+            else "profile"
+            if profile_region
+            else "user_config"
+            if stored_region
+            else "unset"
+        )
+        add(
+            "openapi_region",
+            bool(region),
+            f"{region or '未配置区域'} (source={region_source})",
+        )
         cached_regions = (
             openapi_config.get("regions")
             if isinstance(openapi_config, dict)

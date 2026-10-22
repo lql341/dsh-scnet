@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.14 - 2026-10-22
+
+- Resolve the OpenAPI region from `SCNET_OPENAPI_REGION_ID`, then the selected
+  profile, then stored user config; report the source in `doctor`.
+- Keep `doctor` offline behavior unchanged while making the environment/profile
+  override visible and testable.
+
 ## 0.6.13 - 2026-10-18
 
 - Recover from invalid Windows credential-store encodings with redacted instructions instead
