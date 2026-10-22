@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/lql341/scnet-hpc",
-  "commit": "d539c6d0e8e6e08316136a81e7db2fcb6930e3d1",
+  "commit": "4727819168151f7aba915dd3ac150b65e0223a34",
   "version": "0.6.15",
   "note": "Generated from the canonical scnet-hpc repository; run sync.sh to refresh."
 }
