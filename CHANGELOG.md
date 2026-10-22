@@ -2,9 +2,11 @@
 
 ## 0.6.15 - 2026-10-22
 
-- Sync scnet-hpc 0.6.15: doctor accepts explicit region and repeated queues,
-  verifies queue binding, and records the region source.
-- Refresh the canonical source commit metadata.
+- Let `doctor` accept an explicit region and repeated queues, and verify that
+  each selected queue exists in that region.
+- Reject queue binding when `--no-network` cannot verify it.
+- Report whether the region came from CLI, environment, profile or user config.
+- Add region/queue binding and missing-queue regressions.
 
 ## 0.6.14 - 2026-10-22
 
@@ -12,8 +14,6 @@
   profile, then stored user config; report the source in `doctor`.
 - Keep `doctor` offline behavior unchanged while making the environment/profile
   override visible and testable.
-- Record the canonical scnet-hpc source commit in `skills/scnet-hpc/SOURCE.json`;
-  `sync.sh` refreshes it with the rest of the bundle.
 
 ## 0.6.13 - 2026-10-18
 

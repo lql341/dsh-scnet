@@ -4,10 +4,10 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.14**
+Current release: **0.6.15**
 
 <!-- scnet-release:start -->
-## 0.6.14 highlights
+## 0.6.15 highlights
 
 - Recover malformed Windows credential entries with actionable, redacted guidance.
 - Print absolute follow-up commands that work from any directory, with shell-appropriate quoting.
