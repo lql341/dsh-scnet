@@ -82,3 +82,19 @@ Windows 原生使用 OpenAPI 无需 WSL2；SSH 自动安装需要 WSL2 或按连
 > 访问控制”下载文件中的 Accesskey、Secretkey 两项。请只在本机终端向导里填写，
 > 不要发到聊天。我会给你当前安装目录对应的命令，完成后用 status 和 doctor 检查。
 > 如需远程编译或装环境，再到目标区域的“命令行 E-Shell → SSH 连接”下载 SSH 私钥。
+
+## Agent interaction
+
+When an agent is helping a first-time user:
+
+1. Run a read-only status check first, for example
+   `python3 "<Skill目录>/scripts/scnet.py" --json doctor` or
+   `setup status`; do not submit a job.
+2. Report one missing category at a time: account/resource activation, credentials,
+   region/queue selection, SSH access, or remote software/module deployment.
+3. Ask one question at a time. Never request AK/SK, private keys or credential-file
+   contents in chat.
+4. For credentials, give the exact command to run in the user's own terminal; do not
+   launch a hidden interactive prompt from an agent tool call.
+5. After the user acts, re-run the status check before selecting resources or
+   submitting a job.
