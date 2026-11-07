@@ -112,4 +112,4 @@ try:
 except Exception as exc:
     emit("TMPDIR", "ERR:" + short_error(exc))
 
-print("PROBE_EXIT=0", flush=True)
+# 退出码由调用方（run-compute-probe.sh）按真实 $? 回报，这里不重复声明。

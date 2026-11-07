@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.16 - 2026-11-07
+
+- Make `limits` unambiguous across backends: OpenAPI `limits` is user/account quota, so
+  `--partition` is refused with a pointer to `queues` (which already reports partition nodes,
+  free resources and max walltime); `--json` reports it as `UNSUPPORTED_OPTION`.
+- SSH `limits` reports `allow_accounts_count` only; the full `AllowAccounts` list stays behind
+  `--raw`, so a busy partition no longer emits thousands of unrelated user names.
+- Strip Slurm's right-padded `%P` value so `queues` and `job` render identically from both
+  backends, and keep legitimate zero GPU/DCU counts in normalized jobs.
+- Stream OpenAPI `download` through a sibling temporary file and rename it into place, so large
+  files are not buffered in memory and an interrupted transfer cannot truncate an existing
+  target; JSON error bodies are still reported without creating the file.
+- Give SSH `scp` transfers a long timeout (`max(--timeout, 1800s)`) while keeping the short
+  control-plane timeout for scheduler commands.
+- Fix `SSH_PORT` resolution so a profile without a port falls back to `~/.ssh/config` instead of
+  being forced to 22, quote the remote `scontrol show partition` argument, validate probe job IDs
+  before building cleanup paths, and generate a CPU-safe skeleton (no `import torch`) for
+  `--cpu-only` jobs.
+- Retry dropped connections while `wait` polls a read-only job state (at most three in a row)
+  without masking authentication or not-found errors.
+- Send `GAP_NPROC` as total cores (`--cpus` per node × `--nodes`) so multi-node submissions no
+  longer request too few CPUs, and label `--gpus`, `--dcus` and `--memory` as per-node.
+- Add a backend-neutral `quota` operation: OpenAPI reads `parastor/quota/usernames`, SSH parses
+  `df -BG "$HOME"`; both report threshold/usage/free for the home filesystem.
+- Point `limits --partition` at `queues` (which already exposes partition nodes, free resources
+  and max walltime) instead of SSH, and document that `queues.max_walltime` is seconds on
+  OpenAPI but `D-HH:MM:SS` over SSH.
+- Document the operations that share a name but not a meaning (`limits`, `logs`, `submit`,
+  `download`) and the backend-specific option boundaries.
+
 ## 0.6.15 - 2026-10-22
 
 - Let `doctor` accept an explicit region and repeated queues, and verify that

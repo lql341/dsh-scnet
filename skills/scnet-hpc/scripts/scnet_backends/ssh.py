@@ -11,8 +11,12 @@ from .base import Backend, BackendError, require_option
 from .profile import list_profiles
 
 
+# Fields whose Slurm format strings pad with spaces (sinfo %P is right-aligned)
+# or whose reason text carries meaningful inner spacing but no outer padding.
+# Values are stripped on both ends so one job/queue renders identically from
+# the SSH and OpenAPI backends.
 def _split_pipe(line: str, fields: list[str]) -> dict[str, str]:
-    values = line.rstrip("\n").split("|")
+    values = [value.strip() for value in line.rstrip("\n").split("|")]
     values += [""] * max(0, len(fields) - len(values))
     return dict(zip(fields, values))
 
@@ -26,6 +30,7 @@ class SSHBackend(Backend):
             "limits",
             "job",
             "logs",
+            "quota",
             "submit",
             "cancel",
             "upload",
@@ -40,7 +45,13 @@ class SSHBackend(Backend):
             raise BackendError("SSH operations require --cluster and a CLUSTER_ID profile field")
         return alias
 
-    def _run(self, argv: list[str], *, input_text: str | None = None) -> str:
+    def _run(
+        self,
+        argv: list[str],
+        *,
+        input_text: str | None = None,
+        timeout: float | None = None,
+    ) -> str:
         try:
             completed = subprocess.run(
                 argv,
@@ -48,7 +59,7 @@ class SSHBackend(Backend):
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=self.context.timeout,
+                timeout=self.context.timeout if timeout is None else timeout,
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -95,6 +106,10 @@ class SSHBackend(Backend):
             row["partition"] = row["partition"].rstrip("*")
         return rows
 
+    def _transfer_timeout(self) -> float:
+        """A file transfer must not inherit the short control-plane timeout."""
+        return max(float(self.context.timeout), 1800.0)
+
     def op_limits(self, options: Mapping[str, Any]) -> Any:
         partition = (
             options.get("partition")
@@ -125,12 +140,21 @@ class SSHBackend(Backend):
             "MaxTime",
             "MinNodes",
             "MaxNodes",
-            "AllowAccounts",
             "AllowQos",
             "QoS",
             "TRES",
         }
-        return {key: value for key, value in parsed.items() if key in keep}
+        result = {key: value for key, value in parsed.items() if key in keep}
+        # AllowAccounts on a busy partition lists thousands of other users' names.
+        # Report the count only; the full list stays behind --raw.
+        accounts = [
+            item for item in parsed.get("AllowAccounts", "").split(",") if item
+        ]
+        if accounts:
+            result["allow_accounts_count"] = len(accounts)
+            if options.get("raw"):
+                result["allow_accounts"] = accounts
+        return result
 
     def op_job(self, options: Mapping[str, Any]) -> Any:
         job_id = str(require_option(options, "job_id"))
@@ -166,6 +190,41 @@ class SSHBackend(Backend):
             raise BackendError(f"job {job_id!r} was not found")
         history_fields = fields[:-1] + ["exit_code"]
         return _split_pipe(output.splitlines()[0], history_fields)
+
+    def op_quota(self, options: Mapping[str, Any]) -> Any:
+        """Home filesystem quota/usage; matches the OpenAPI parastor figures."""
+        output = self._ssh(
+            'printf \'%s\\n\' "$HOME"; LC_ALL=C df -BG "$HOME" 2>/dev/null | tail -1'
+        )
+        lines = [line for line in output.splitlines() if line.strip()]
+        if len(lines) < 2:
+            raise BackendError("could not read home quota with df")
+        home = lines[0].strip()
+        fields = lines[1].split()
+        if len(fields) < 6:
+            raise BackendError(f"unexpected df output: {lines[1]!r}")
+
+        def number(value: str) -> int | None:
+            cleaned = value.rstrip("G").rstrip("%")
+            return int(cleaned) if cleaned.isdigit() else None
+
+        size, used, avail, percent, mount = (
+            number(fields[1]),
+            number(fields[2]),
+            number(fields[3]),
+            number(fields[4]),
+            fields[5],
+        )
+        return [
+            {
+                "path": home,
+                "mount": mount,
+                "threshold_gb": size,
+                "usage_gb": used,
+                "free_gb": avail,
+                "used_percent": float(percent) if percent is not None else None,
+            }
+        ]
 
     def op_logs(self, options: Mapping[str, Any]) -> Any:
         path = str(require_option(options, "path"))
@@ -245,7 +304,10 @@ class SSHBackend(Backend):
         destination = check[1] if len(check) > 1 else remote_path
         if state == "EXISTS" and not options.get("cover"):
             raise BackendError("remote path already exists; pass --cover to overwrite it")
-        self._run(["scp", str(local_path), f"{self._alias()}:{remote_path}"])
+        self._run(
+            ["scp", str(local_path), f"{self._alias()}:{remote_path}"],
+            timeout=self._transfer_timeout(),
+        )
         return {"local_path": str(local_path), "remote_path": destination}
 
     def op_download(self, options: Mapping[str, Any]) -> Any:
@@ -255,7 +317,10 @@ class SSHBackend(Backend):
             raise BackendError("remote path must be a safe absolute path")
         if local_path.exists() and not options.get("cover"):
             raise BackendError("local path already exists; pass --cover to overwrite it")
-        self._run(["scp", "-r", f"{self._alias()}:{remote_path}", str(local_path)])
+        self._run(
+            ["scp", "-r", f"{self._alias()}:{remote_path}", str(local_path)],
+            timeout=self._transfer_timeout(),
+        )
         return {"remote_path": remote_path, "local_path": str(local_path)}
 
     def op_exec(self, options: Mapping[str, Any]) -> Any:

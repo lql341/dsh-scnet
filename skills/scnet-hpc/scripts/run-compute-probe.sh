@@ -140,8 +140,11 @@ scp_cmd -q "$TMPDIR_LOCAL/compute-probe.py" "${CLUSTER_ID}:${PROBE_BASE}.py"
 scp_cmd -q "$TMPDIR_LOCAL/probe.slurm" "${CLUSTER_ID}:${PROBE_BASE}.slurm"
 
 JOBID=$(ssh_cmd "$CLUSTER_ID" "cd ${HOME_DIR} && sbatch --parsable --wait ${PROBE_BASE}.slurm" | tail -1)
-OUT=$(ssh_cmd "$CLUSTER_ID" "cat ${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.out" 2>/dev/null || true)
-ERR=$(ssh_cmd "$CLUSTER_ID" "cat ${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.err" 2>/dev/null || true)
+if ! [[ "$JOBID" =~ ^[0-9]+$ ]]; then
+    die "提交计算节点探针失败：无法解析作业号（输出：${JOBID:-空}）"
+fi
+OUT=$(ssh_cmd "$CLUSTER_ID" "cat '${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.out'" 2>/dev/null || true)
+ERR=$(ssh_cmd "$CLUSTER_ID" "cat '${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.err'" 2>/dev/null || true)
 
 if [ -n "$OUT" ]; then
     printf '%s\n' "$OUT"
@@ -149,4 +152,8 @@ else
     printf '%s\n' "$ERR" >&2
 fi
 
-ssh_cmd "$CLUSTER_ID" "rm -f ${PROBE_BASE}.py ${PROBE_BASE}.slurm ${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.out ${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.err; rm -rf ${HOME_DIR}/.scnet-hpc/tmp/${JOBID}"
+# 只清理本次探针产生的文件，作业号必须有效才能拼路径
+ssh_cmd "$CLUSTER_ID" "rm -f '${PROBE_BASE}.py' '${PROBE_BASE}.slurm' \
+'${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.out' \
+'${HOME_DIR}/scripts/logs/scnet-hpc-probe_${JOBID}.err'; \
+rm -rf '${HOME_DIR}/.scnet-hpc/tmp/${JOBID}'"

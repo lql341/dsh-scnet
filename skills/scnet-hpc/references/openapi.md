@@ -19,110 +19,68 @@ compact result is insufficient.
 
 ## Credentials
 
-Obtain AK/SK from the SCNet website:
-
-1. Sign in to SCNet.
-2. Open **Personal Center / 个人中心**.
-3. Open **Access Control / 访问控制**.
-4. Generate and download the authorization file containing AccessKey and SecretKey.
-
-Use the platform username for `user`, the downloaded file's `Accesskey` column for AK,
-and its `Secretkey` column for SK. Copy each value separately, without column labels or shell
-assignments. These credentials differ from both cluster/Linux usernames and model-service API keys.
-For the initial user briefing and commands that work outside the Skill directory, read
+Get AK/SK from SCNet **个人中心 → 访问控制**; the downloaded file's `Accesskey` and `Secretkey`
+columns are the AK and SK, and the username is the platform login. These differ from cluster/Linux
+usernames and from model-service API keys. The step-by-step user briefing lives in
 [first-use.md](first-use.md).
 
-Official instructions:
+Official: <https://www.scnet.cn/ac/openapi/doc/2.0/index.html> ·
 <https://www.scnet.cn/ac/openapi/doc/2.0/api/safecertification/get-user-tokens-aksk.html>
 
 ## Guided first-time setup
 
-Run `python3 scripts/scnet.py setup new --mode openapi` on macOS/Linux, or
-`python scripts/scnet.py setup new --mode openapi` in Windows PowerShell.
-Use `setup modify --mode openapi` to replace credentials for an existing setup.
+```bash
+python3 scripts/scnet.py setup new --mode openapi     # macOS/Linux
+python scripts/scnet.py setup new --mode openapi      # Windows PowerShell
+```
 
-Copy only each field's value, one at a time: platform login user, AccessKey, then SecretKey.
-The cluster/Linux username is discovered later and may differ. Both key inputs are invisible;
-surrounding quotes are removed, while pasted shell assignments, multiline values, and invisible
-characters are rejected with a retry. The wizard does not display either key.
+Use `setup modify --mode openapi` to replace credentials. Copy one field at a time: platform user,
+AccessKey, SecretKey; both key inputs are invisible, wrapping quotes are removed, and pasted shell
+assignments or multiline values are rejected.
 
-| Environment | Where persistent AK/SK are stored | Dependency and recovery |
+| Environment | Persistent AK/SK storage | Notes |
 |---|---|---|
-| macOS | Login user's Keychain, service `scnet-hpc-openapi` | Built-in `security`; allow access/unlock when prompted; find the item in Keychain Access |
-| Linux desktop | Secret Service, service `scnet-hpc-openapi` | Ubuntu/Debian: `sudo apt install libsecret-tools`; a running, unlocked keyring and session D-Bus are also needed |
-| Linux headless / CI | Host-injected environment | No `libsecret-tools` required for API calls; installing the package alone does not create a working keyring |
-| Native Windows | Current user's Windows Credential Manager, Generic Credential `scnet-hpc-openapi` | Built in; manage through Control Panel > Credential Manager > Windows Credentials |
-| WSL2 | Linux credentials inside WSL2 | Windows Credential Manager and Windows environment changes are not automatically shared |
+| macOS | Keychain, service `scnet-hpc-openapi` | Built-in `security`; allow access when prompted |
+| Linux desktop | Secret Service, service `scnet-hpc-openapi` | Needs `libsecret-tools` **and** a running, unlocked keyring and session D-Bus |
+| Linux headless / CI | Host-injected environment | Installing `libsecret-tools` alone does not create a workable keyring |
+| Windows / WSL2 | Current user's Credential Manager (WSL2: inside WSL2 only) | Windows and WSL2 do not share stores |
 
-Saving is optional and happens after authentication. A saved item is read back before persistence is
-reported as verified. If saving fails or is declined, **region setup is not credential persistence**:
-the panel records `not_saved` and explains how to provide credentials for subsequent commands.
-Use `setup status` for metadata and the actual credential source visible to the current process;
-use `doctor --no-network` for local checks or `doctor` for a read-only connection check.
-`setup reset` can delete the credential-store item separately from region metadata.
+Saving is optional and verified by reading the item back; if it fails the panel records
+`not_saved` instead of claiming success. `setup status` shows metadata and the credential source
+the current process actually sees; `setup reset` can delete the store item separately.
 
 ### Environment injection
 
-Set all three variables together. A partial set is rejected instead of mixing one account's
-username/key with another account's saved credential set. Environment values take precedence over
-the system store; clear stale overrides after saving replacement credentials.
-
-Bash/Zsh, in the same terminal that will launch the client:
+Set all three (a partial set is rejected so two accounts cannot be mixed); environment values
+override the system store, so clear stale overrides after saving replacements.
 
 ```bash
 export SCNET_OPENAPI_USER="<platform-user>"
 export SCNET_OPENAPI_ACCESS_KEY="<access-key>"
 export SCNET_OPENAPI_SECRET_KEY="<secret-key>"
+python3 scripts/scnet.py --backend openapi doctor
 ```
 
-PowerShell, in the same window that will launch the client:
+PowerShell: same three names as `$env:SCNET_OPENAPI_USER`, `$env:SCNET_OPENAPI_ACCESS_KEY`,
+`$env:SCNET_OPENAPI_SECRET_KEY`. They last only for that session and its children, so prefer the
+wizard and Credential Manager for daily use; do not use plaintext shell profiles, `setx`, or
+checked-in env files. Commands containing secrets may land in shell history.
 
-```powershell
-$env:SCNET_OPENAPI_USER = "<platform-user>"
-$env:SCNET_OPENAPI_ACCESS_KEY = "<access-key>"
-$env:SCNET_OPENAPI_SECRET_KEY = "<secret-key>"
-python scripts/scnet.py --backend openapi doctor
-```
-
-These `$env:` assignments last only for the current PowerShell session and its subsequently launched
-children. Already-running desktop applications do not receive them. Prefer the interactive wizard and
-Windows Credential Manager for daily desktop use. Do not use plaintext shell profiles, `setx`, or
-checked-in environment files as the default credential store. Commands containing real secrets may
-be recorded in shell history; host-managed secret injection avoids manual command entry.
-
-To stop overriding the store in PowerShell:
-
-```powershell
-Remove-Item Env:SCNET_OPENAPI_USER,Env:SCNET_OPENAPI_ACCESS_KEY,Env:SCNET_OPENAPI_SECRET_KEY -ErrorAction SilentlyContinue
-```
-
-The client signs the canonical AK/timestamp/user JSON with HMAC-SHA256 when requesting
-region tokens. Tokens are reused from a permission-restricted disk cache for up to four hours
-when available; an expired or unavailable cache triggers authentication. The setup panel can store the
-platform credential set in macOS Keychain, Linux Secret Service, or Windows Credential Manager; otherwise use environment
-variables. Region IDs, region users, schedulers, and home paths are discovered and cached as
-non-secret metadata.
-
-Interactive terminals support ↑/↓ plus Enter and direct numeric selection. Press Enter without
-typing a number to accept the current/default item. SecretKey input is intentionally invisible.
-This behavior is the same in macOS Terminal/iTerm2 and Ubuntu/Debian terminals.
-Ubuntu/Debian users can install `secret-tool` with `sudo apt install libsecret-tools`.
-
-For an externally managed token:
+For an externally managed token, or to override discovery:
 
 ```bash
-export SCNET_OPENAPI_TOKEN="<region-token>"
+export SCNET_OPENAPI_TOKEN="<region-token>"       # requires SCNET_OPENAPI_REGION_ID
 export SCNET_OPENAPI_REGION_ID="<region-id>"
-```
-
-Optional overrides:
-
-```bash
 export SCNET_OPENAPI_AUTH_BASE="https://api.scnet.cn"
 export SCNET_OPENAPI_CENTER_URL="https://www.scnet.cn/ac/openapi/v2/center"
 export SCNET_OPENAPI_SCHEDULER_ID="<scheduler-id>"
 export SCNET_OPENAPI_USERNAME="<region-user>"
 ```
+
+The client signs the canonical AK/timestamp/user JSON with HMAC-SHA256, and reuses region tokens
+from a permission-restricted disk cache for up to four hours. Region IDs, users, schedulers and
+home paths are cached as non-secret metadata. Interactive terminals support ↑/↓ plus Enter and
+direct numeric selection; SecretKey entry never echoes characters.
 
 Never put these values in a prompt, profile, repository file, generated report, or shell trace.
 Use the host's credential store or secret injection when available.
@@ -138,9 +96,15 @@ python3 scripts/scnet.py --backend openapi --region <id> \
   logs --path /absolute/path/std.out.123 --lines 200
 python3 scripts/scnet.py --backend openapi --region <id> \
   files --path /absolute/path
+python3 scripts/scnet.py --backend openapi --region <id> quota
 ```
 
 If a region exposes multiple schedulers, add `--scheduler-id`.
+
+`limits` here means **your user/account quota**, not partition capacity: `--partition` is
+rejected on purpose. Partition node counts, free resources and max walltime come from `queues`;
+SSH `limits --partition` additionally reports TRES, QoS and `DefMemPerCPU`. `quota` returns the
+shared-storage threshold and usage. `logs` is a paged file-service read (`--page`, `--host-name`).
 
 ## Mutations
 
@@ -172,7 +136,9 @@ python3 scripts/scnet.py --backend openapi --region <id> \
   download /absolute/remote/file local.file
 ```
 
-Downloads refuse to replace an existing local path unless `--cover` is supplied. Uploads send
+Downloads refuse to replace an existing local path unless `--cover` is supplied. They stream to a
+temporary file and rename it into place, so a large or interrupted transfer neither fills memory
+nor truncates an existing target. Uploads send
 `uncover` by default and require `--cover` for replacement.
 
 For uploads, the second argument is always a remote **directory**, not a complete filename.
@@ -239,6 +205,10 @@ the public documentation does not establish an idempotency key for submission.
   interactive `srun`, performance profiling, or low-level scheduler diagnosis.
 - API success is determined by both HTTP transport and the JSON `code`; HTTP 200 alone is not
   sufficient.
+- History lookups use the filtered `/historyjobs` list. The `/historyjobs/{scheduler}/{job}`
+  detail endpoint needs `acctTime` and can exceed a two-minute timeout without it.
+- Submit sends `GAP_NPROC` as total cores (`--cpus` per node × `--nodes`) because the API also
+  defines `GAP_PPN`; `GAP_NDCU`, `GAP_NGPU` and `GAP_JOB_MEM` are per node.
 
 ## Compact output and waiting
 
