@@ -70,7 +70,7 @@ LOGIN_HOST=$(r 'hostname')
 REMOTE_HOME=$(r 'echo $HOME')
 HOME_BASE_NEW=$(dirname "$REMOTE_HOME")
 CPU_MODEL_NEW=$(r "lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -1")
-QUOTA_NEW=$(r "df -BG $REMOTE_HOME 2>/dev/null | awk 'NR==2{gsub(/[^0-9]/,\"\",\$2); print \$2}'")
+QUOTA_NEW=$(r "df -BG $(remote_quote "$REMOTE_HOME") 2>/dev/null | awk 'NR==2{gsub(/[^0-9]/,\"\",\$2); print \$2}'")
 
 # ---- 调度器 ----
 SCHED_NEW="unknown"
@@ -93,7 +93,7 @@ ACCEL_NEW=""
 if [ "$SCHED_NEW" = "slurm" ]; then
     # 优先沿用 profile 现有分区，只在它已经不再 up 时才改选第一个 up 分区。
     if [ -n "${PARTITION:-}" ]; then
-        PART_STATE=$(r "sinfo -h -p ${PARTITION} -o '%a' | head -1")
+        PART_STATE=$(r "sinfo -h -p $(remote_quote "$PARTITION") -o '%a' | head -1")
         [ "$PART_STATE" = "up" ] && PART_NEW="$PARTITION"
     fi
     if [ -z "$PART_NEW" ]; then
@@ -101,18 +101,18 @@ if [ "$SCHED_NEW" = "slurm" ]; then
     fi
 
     if [ -n "$PART_NEW" ]; then
-        SCON=$(r "scontrol show partition $PART_NEW")
+        SCON=$(r "scontrol show partition $(remote_quote "$PART_NEW")")
         DEFMEM_NEW=$(printf '%s' "$SCON" | tr ' ' '\n' | sed -n 's/^DefMemPerCPU=//p' | head -1)
         MAXWALL_NEW=$(printf '%s' "$SCON" | tr ' ' '\n' | sed -n 's/^MaxTime=//p' | head -1)
         NODECNT_NEW=$(printf '%s' "$SCON" | tr ' ' '\n' | sed -n 's/^TotalNodes=//p' | head -1)
 
         QOS_NEW=$(printf '%s' "$SCON" | tr ' ' '\n' | sed -n 's/^QoS=//p' | head -1)
         if [ -n "$QOS_NEW" ] && [ "$QOS_NEW" != "N/A" ]; then
-            MINTRES=$(r "sacctmgr -nP show qos where name=$QOS_NEW format=MinTRES")
+            MINTRES=$(r "sacctmgr -nP show qos where name=$(remote_quote "$QOS_NEW") format=MinTRES")
             MINGRES_NEW=$(printf '%s' "$MINTRES" | sed -n 's|.*gres/\([a-z]*\)=\([0-9]*\).*|\1:\2|p')
         fi
 
-        NODEINFO=$(r "sinfo -h -p $PART_NEW -o '%c|%m|%G' | head -1")
+        NODEINFO=$(r "sinfo -h -p $(remote_quote "$PART_NEW") -o '%c|%m|%G' | head -1")
         CPUS_NEW=$(printf '%s' "$NODEINFO" | cut -d'|' -f1)
         NODEMEM_NEW=$(printf '%s' "$NODEINFO" | cut -d'|' -f2 | awk '{printf "%d", $1/1024}')
         GRESRAW=$(printf '%s' "$NODEINFO" | cut -d'|' -f3)

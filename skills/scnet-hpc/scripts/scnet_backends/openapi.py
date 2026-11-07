@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -58,6 +59,16 @@ def normalize_job(item: Mapping[str, Any]) -> dict[str, Any]:
         or item.get("state")
         or ""
     )
+
+    def first(*keys: str) -> Any:
+        # `or` chains silently skip a legitimate 0 (e.g. a cancelled job that
+        # used no DCU); only a missing/empty key should fall through.
+        for key in keys:
+            value = item.get(key)
+            if value not in (None, ""):
+                return value
+        return None
+
     return {
         "job_id": str(item.get("jobId") or item.get("job_id") or ""),
         "name": item.get("jobName") or item.get("name"),
@@ -65,20 +76,10 @@ def normalize_job(item: Mapping[str, Any]) -> dict[str, Any]:
         "raw_state": raw_state,
         "queue": item.get("queue") or item.get("queueName"),
         "user": item.get("user") or item.get("userName"),
-        "nodes": (
-            item.get("nodeNumReq")
-            or item.get("nodeUsed")
-            or item.get("nodeNum")
-            or item.get("nodect")
-        ),
-        "cpus": (
-            item.get("procNumReq")
-            or item.get("procNumUsed")
-            or item.get("nproc")
-            or item.get("jobProcNum")
-        ),
-        "gpus": item.get("gpuNumReq") or item.get("gpuNumUsed"),
-        "dcus": item.get("dcuNumReq") or item.get("dcuNumUsed"),
+        "nodes": first("nodeNumReq", "nodeUsed", "nodeNum", "nodect"),
+        "cpus": first("procNumReq", "procNumUsed", "nproc", "jobProcNum"),
+        "gpus": first("gpuNumReq", "gpuNumUsed"),
+        "dcus": first("dcuNumReq", "dcuNumUsed"),
         "elapsed": item.get("jobRunTime") or item.get("jobWalltimeUsed"),
         "submitted_at": (
             item.get("jobSubmitTime")
@@ -112,6 +113,7 @@ class OpenAPIBackend(Backend):
             "cancel",
             "files",
             "mkdir",
+            "quota",
             "upload",
             "download",
         }
@@ -335,6 +337,12 @@ class OpenAPIBackend(Backend):
         return {"items": result, "raw": data} if options.get("raw") else result
 
     def op_limits(self, options: Mapping[str, Any]) -> Any:
+        if options.get("partition") not in (None, ""):
+            raise BackendError(
+                "OpenAPI limits does not support --partition; it reports your "
+                "user/account quota. Use `queues` for partition node counts, "
+                "free resources and max walltime."
+            )
         hpc_url, token, scheduler_id, _, _ = self._hpc_context(options)
         params = urlencode({"strJobManagerID": scheduler_id})
         data = self._json_request(
@@ -363,6 +371,45 @@ class OpenAPIBackend(Backend):
         }
         result = {target: data.get(source) for source, target in key_map.items()}
         return {"data": result, "raw": data} if options.get("raw") else result
+
+    def op_quota(self, options: Mapping[str, Any]) -> Any:
+        """Per-user shared-storage quota and usage for the selected region."""
+        hpc_url, token, _, username, _ = self._hpc_context(options)
+        data = self._json_request(
+            "GET",
+            service_endpoint(
+                hpc_url,
+                "hpc",
+                f"/openapi/v2/parastor/quota/usernames/{quote(username)}",
+            ),
+            token=token,
+        )
+        entries = data if isinstance(data, list) else [data]
+        result = []
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            threshold = item.get("threshold")
+            usage = item.get("usage")
+            entry = {
+                "path": item.get("path"),
+                "threshold_gb": threshold,
+                "usage_gb": usage,
+                "free_gb": (
+                    round(float(threshold) - float(usage), 2)
+                    if threshold is not None and usage is not None
+                    else None
+                ),
+                "used_percent": (
+                    round(float(usage) / float(threshold) * 100, 1)
+                    if threshold and usage is not None
+                    else None
+                ),
+            }
+            result.append(entry)
+        if not result:
+            raise BackendError("storage quota endpoint returned no records")
+        return {"items": result, "raw": data} if options.get("raw") else result
 
     def op_account(self, options: Mapping[str, Any]) -> Any:
         _, token, region = self._center(options)
@@ -666,7 +713,9 @@ class OpenAPIBackend(Backend):
             "GAP_JOB_NAME": payload["name"],
             "GAP_WORK_DIR": payload["work_dir"],
             "GAP_QUEUE": payload["queue"],
-            "GAP_NPROC": str(payload["cpus"]),
+            # GAP_NPROC is the *total* core count (GAP_PPN is the per-node
+            # variant), while --cpus and GAP_NDCU/GAP_NGPU are per node.
+            "GAP_NPROC": str(payload["cpus"] * payload["nodes"]),
             "GAP_PPN": "",
             "GAP_NGPU": str(payload["gpus"] or ""),
             "GAP_NDCU": str(payload["dcus"] or ""),
@@ -985,24 +1034,55 @@ class OpenAPIBackend(Backend):
             method="GET",
             headers={"token": token, "User-Agent": "scnet-hpc/1"},
         )
+        # Stream to a sibling temporary file so a multi-gigabyte download never has
+        # to fit in memory, and an interrupted transfer cannot truncate an existing
+        # target. The response is only renamed into place after a clean read.
+        temporary = local_path.with_name(
+            f".{local_path.name}.{os.getpid()}.part"
+        )
+        written = 0
+        content_type = ""
         try:
             with urlopen(request, timeout=self.context.timeout) as response:
                 content_type = response.headers.get("Content-Type", "")
-                content = response.read()
+                with temporary.open("wb") as sink:
+                    while True:
+                        block = response.read(256 * 1024)
+                        if not block:
+                            break
+                        sink.write(block)
+                        written += len(block)
+            if "application/json" in content_type:
+                raise BackendError(
+                    "SCNet OpenAPI download returned JSON instead of file content: "
+                    + json.dumps(
+                        self._json_error_payload(temporary),
+                        ensure_ascii=False,
+                    )
+                )
+            os.replace(temporary, local_path)
         except (HTTPError, URLError, OSError) as exc:
             raise BackendError(f"OpenAPI download failed: {exc}") from exc
-        if "application/json" in content_type:
+        finally:
             try:
-                payload = json.loads(content.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                payload = None
-            if isinstance(payload, dict) and str(payload.get("code", "0")) != "0":
-                raise BackendError(
-                    f"SCNet OpenAPI error {payload.get('code')}: {payload.get('msg')}"
-                )
-        local_path.write_bytes(content)
+                temporary.unlink()
+            except OSError:
+                pass
         return {
             "remote_path": remote_path,
             "local_path": str(local_path),
-            "bytes": len(content),
+            "bytes": written,
         }
+
+    @staticmethod
+    def _json_error_payload(path: Path) -> Any:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, ValueError):
+            return {"error": "unreadable JSON response"}
+        if isinstance(payload, dict):
+            return {
+                "code": payload.get("code"),
+                "msg": payload.get("msg"),
+            }
+        return payload

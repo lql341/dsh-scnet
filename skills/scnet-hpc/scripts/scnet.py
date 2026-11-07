@@ -134,6 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
     limits = subparsers.add_parser("limits", help="show scheduler or user resource limits")
     limits.add_argument("--partition")
 
+    subparsers.add_parser("quota", help="show storage quota and usage")
     account = subparsers.add_parser("account", help="show account summary")
     resource_summary = subparsers.add_parser(
         "resource-summary", help="show region resources and limits"
@@ -156,8 +157,8 @@ def build_parser() -> argparse.ArgumentParser:
     logs.add_argument("--path", required=True)
     logs.add_argument("--lines", type=int, default=200)
     logs.add_argument("--direction", choices=("head", "tail"), default="tail")
-    logs.add_argument("--page", type=int, default=1)
-    logs.add_argument("--host-name")
+    logs.add_argument("--page", type=int, default=1, help="OpenAPI: page number")
+    logs.add_argument("--host-name", help="OpenAPI: file host")
 
     submit = subparsers.add_parser("submit", help="submit a job")
     submit.add_argument("--remote-path", help="SSH: existing remote Slurm script")
@@ -165,20 +166,21 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--command", help="OpenAPI: command or multiline script body")
     submit.add_argument("--work-dir", help="OpenAPI: absolute work directory")
     submit.add_argument("--queue", help="OpenAPI: queue name")
-    submit.add_argument("--nodes", type=int, default=1)
-    submit.add_argument("--cpus", type=int, default=1)
-    submit.add_argument("--gpus", type=int, default=0)
-    submit.add_argument("--dcus", type=int, default=0)
-    submit.add_argument("--memory")
-    submit.add_argument("--walltime", default="24:00:00")
-    submit.add_argument("--stdout")
-    submit.add_argument("--stderr")
-    submit.add_argument("--exclusive", action="store_true")
+    submit.add_argument("--nodes", type=int, default=1, help="OpenAPI: node count")
+    submit.add_argument("--cpus", type=int, default=1, help="OpenAPI: CPUs per node (sent as total cores)")
+    submit.add_argument("--gpus", type=int, default=0, help="OpenAPI: GPUs per node")
+    submit.add_argument("--dcus", type=int, default=0, help="OpenAPI: DCUs per node")
+    submit.add_argument("--memory", help="OpenAPI: memory per node (MB/GB)")
+    submit.add_argument("--walltime", default="24:00:00", help="OpenAPI: HH:MM:SS or D-HH:MM:SS")
+    submit.add_argument("--stdout", help="OpenAPI: stdout path")
+    submit.add_argument("--stderr", help="OpenAPI: stderr path")
+    submit.add_argument("--exclusive", action="store_true", help="OpenAPI: request exclusive nodes")
     submit.add_argument(
         "--scheduler-option",
         dest="scheduler_options",
         action="append",
         default=[],
+        help="OpenAPI: extra scheduler directive, repeatable",
     )
 
     cancel = subparsers.add_parser("cancel", help="cancel/delete a job")
@@ -203,7 +205,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--chunk-size",
         type=int,
         default=8 * 1024 * 1024,
-        help="chunked OpenAPI upload threshold and chunk size in bytes; 0 disables",
+        help=(
+            "OpenAPI chunked-upload threshold and chunk size in bytes; "
+            "default 8388608, 0 disables chunking"
+        ),
     )
 
     mkdir = subparsers.add_parser("mkdir", help="create a remote directory (OpenAPI)")
@@ -214,7 +219,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="create missing parent directories",
     )
 
-    download = subparsers.add_parser("download", help="download one file or folder")
+    download = subparsers.add_parser(
+        "download", help="download one file (SSH also transfers folders)"
+    )
     download.add_argument("remote_path")
     download.add_argument("local_path", nargs="?")
     download.add_argument("--cover", action="store_true")
@@ -258,7 +265,7 @@ def summarize_output(operation: str, data: Any) -> Any:
         if isinstance(data.get("job"), dict):
             return {
                 "job": summarize_output("job", data["job"]),
-                **pick(data, ("waited_seconds", "timed_out")),
+                **pick(data, ("waited_seconds", "timed_out", "error")),
             }
         result = pick(
             data,
@@ -272,6 +279,7 @@ def summarize_output(operation: str, data: Any) -> Any:
                 "reported_state",
                 "waited_seconds",
                 "timed_out",
+                "error",
             ),
         )
         if not result.get("queue") and data.get("partition"):
@@ -319,6 +327,14 @@ def summarize_output(operation: str, data: Any) -> Any:
         if size is not None:
             result["bytes"] = size
         return _without_empty(result)
+    if operation == "quota" and isinstance(data, list):
+        return [
+            pick(
+                item,
+                ("path", "threshold_gb", "usage_gb", "free_gb", "used_percent"),
+            )
+            for item in data
+        ]
     if operation == "submit" and isinstance(data, dict):
         return pick(data, ("job_id",))
     if operation == "cancel" and isinstance(data, dict):
@@ -367,6 +383,17 @@ def _job_terminal(state: Any) -> bool:
     }
 
 
+def _transient_failure(message: str) -> bool:
+    """Polling may survive a dropped connection; submissions and cancels may not."""
+    if error_code_for(message) == "NETWORK_TIMEOUT":
+        return True
+    value = message.lower()
+    return any(
+        marker in value
+        for marker in ("request failed", "connection", "timed out", "timeout")
+    )
+
+
 def wait_for_job(backend, options: Mapping[str, Any]) -> dict[str, Any]:
     timeout = int(options.get("wait_timeout") or 300)
     interval = int(options.get("interval") or 10)
@@ -375,8 +402,27 @@ def wait_for_job(backend, options: Mapping[str, Any]) -> dict[str, Any]:
     if interval < 1 or interval > 60:
         raise BackendError("interval must be between 1 and 60 seconds")
     started = time.monotonic()
+    transient_failures = 0
     while True:
-        latest = backend.execute("job", options)
+        try:
+            latest = backend.execute("job", options)
+        except BackendError as exc:
+            # A read-only poll is safe to repeat; surface the error instead of
+            # hiding it once the tolerance is exhausted.
+            if not _transient_failure(str(exc)):
+                raise
+            transient_failures += 1
+            elapsed = time.monotonic() - started
+            if transient_failures >= 3 or elapsed >= timeout:
+                return {
+                    "job": {},
+                    "waited_seconds": round(elapsed, 1),
+                    "timed_out": True,
+                    "error": str(exc),
+                }
+            time.sleep(min(interval, max(0.0, timeout - elapsed)))
+            continue
+        transient_failures = 0
         if isinstance(latest, dict) and _job_terminal(latest.get("state")):
             latest["waited_seconds"] = round(time.monotonic() - started, 1)
             latest["timed_out"] = False
@@ -393,6 +439,8 @@ def wait_for_job(backend, options: Mapping[str, Any]) -> dict[str, Any]:
 
 def error_code_for(text: str) -> str:
     value = str(text).lower()
+    if "does not support --" in value:
+        return "UNSUPPORTED_OPTION"
     if "credentials are not configured" in value or "token" in value and "expired" in value:
         return "AUTHENTICATION_FAILED"
     if "region" in value and ("not available" in value or "missing" in value):

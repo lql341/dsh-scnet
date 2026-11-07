@@ -132,7 +132,33 @@ fi
 
 OUT="${NAME}.slurm"
 [ -e "$OUT" ] && die "$OUT 已存在"
-PYTHON_BIN="$(resolve_python)" || die "本机需要 Python 3；请设置 DSH_SCNET_PYTHON 或 SCNET_PYTHON"
+resolve_python >/dev/null || die "本机需要 Python 3；请设置 DSH_SCNET_PYTHON 或 SCNET_PYTHON"
+
+# 可选行集中拼接，避免 profile 缺项时留下空行（以前靠 sed 二次清理）。
+SBATCH_EXTRA=""
+[ -n "$GRES_LINE" ] && SBATCH_EXTRA+="${GRES_LINE}"$'\n'
+[ -n "$MEM_LINE" ] && SBATCH_EXTRA+="${MEM_LINE}"$'\n'
+
+BODY_SETUP=""
+[ -n "$MODULES" ] && BODY_SETUP+="${MODULES}"$'\n'
+[ -n "$VENV_LINE" ] && BODY_SETUP+="${VENV_LINE}"$'\n'
+[ -n "$OFFLINE_LINES" ] && BODY_SETUP+="${OFFLINE_LINES}"$'\n'
+
+# 探针代码按分区类型生成：CPU 分区不 import torch，否则骨架脚本一跑就失败。
+if [ "$CPU_ONLY" = yes ]; then
+    PROBE_CODE='import multiprocessing
+import os
+
+print("host", os.uname().nodename, "| cpus", multiprocessing.cpu_count())
+
+# TODO: 在这里写你的代码'
+else
+    PROBE_CODE='import torch
+print("torch", torch.__version__, "|", torch.cuda.get_device_name(0),
+      "| devices", torch.cuda.device_count())
+
+# TODO: 在这里写你的代码'
+fi
 
 cat > "$OUT" <<EOF
 #!/bin/bash -l
@@ -143,19 +169,15 @@ cat > "$OUT" <<EOF
 # 返回 0，但 ROCM_PATH 未设置且能力工具无输出。该行为已在昆山集群观测。
 #SBATCH --job-name=${NAME}
 #SBATCH --partition=${EFFECTIVE_PARTITION}
-${GRES_LINE}
-#SBATCH --nodes=1
+${SBATCH_EXTRA}#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=${CPUS}
-${MEM_LINE}
 #SBATCH --time=${TIME}
 #SBATCH --output=${HOME_DIR}/scripts/logs/${NAME}_%j.log
 #SBATCH --error=${HOME_DIR}/scripts/logs/${NAME}_%j.err
 
 module purge
-${MODULES}
-${VENV_LINE}
-
+${BODY_SETUP}
 # 集群测试/作业的临时文件统一放共享家目录，不使用节点本地 /tmp。
 JOB_TMPDIR="${HOME_DIR}/.scnet-hpc/tmp/\${SLURM_JOB_ID:-manual-\$\$}"
 mkdir -p "\$JOB_TMPDIR"
@@ -163,17 +185,11 @@ export TMPDIR="\$JOB_TMPDIR"
 export TMP="\$JOB_TMPDIR"
 export TEMP="\$JOB_TMPDIR"
 
-${OFFLINE_LINES}
-
 echo "### node=\$(hostname) jobid=\$SLURM_JOB_ID"
 date +"%Y-%m-%d %H:%M:%S"
 
 python3 - <<'PYEOF'
-import torch
-print("torch", torch.__version__, "|", torch.cuda.get_device_name(0),
-      "| devices", torch.cuda.device_count())
-
-# TODO: 在这里写你的代码
+${PROBE_CODE}
 PYEOF
 
 rc=\$?
@@ -184,9 +200,6 @@ exit \$rc
 EOF
 
 chmod +x "$OUT"
-
-# 清掉 profile 缺项造成的空行
-sed -i.bak '/^$/N;/^\n$/D' "$OUT" 2>/dev/null && rm -f "$OUT.bak"
 
 echo "已生成 $OUT"
 echo "  集群=${CLUSTER_ID}  ${GRES_TYPE:-加速器}=${ACCEL}  CPU=${CPUS}  内存=${MEM_NOTE}  时长=${TIME}"

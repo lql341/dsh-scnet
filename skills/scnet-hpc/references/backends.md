@@ -34,6 +34,7 @@ Built-in capability summary:
 | Job status and logs | yes | yes |
 | Submit and cancel | yes | yes |
 | Upload and download | yes | yes |
+| Storage quota and usage | yes | yes |
 | Create remote directory | no | yes |
 | Arbitrary remote command | yes | no |
 | Modules, builds, interactive diagnosis | yes | no |
@@ -42,6 +43,21 @@ Built-in capability summary:
 Use OpenAPI as the preferred structured control-plane backend. Use SSH for environment setup, compilation,
 interactive inspection, full scheduler tooling, and operations not represented by a structured
 backend.
+
+### Operations that share a name but not a meaning
+
+| Operation | SSH | OpenAPI |
+|---|---|---|
+| `limits` | **partition capacity**: node/CPU totals, `MaxTime`, TRES, QoS | **your quota**: max CPU/DCU/GPU/nodes, queued/running job caps |
+| `submit` | existing remote `.slurm` file | inline `--command` built by the API |
+| `download` | `scp -r`, files and folders | single file, streamed |
+| `logs` | `tail`/`head` on any path | file-service paged read |
+
+The two `limits` commands answer different questions, so OpenAPI rejects `--partition` rather than
+returning quota for a partition nobody asked about; partition capacity comes from `queues`.
+`queues.max_walltime` is seconds on OpenAPI and `D-HH:MM:SS` over SSH. `quota` answers the same
+question on both backends (per-user storage threshold/usage). SSH transfers use
+`max(--timeout, 1800s)` so a short control-plane timeout cannot abort a large `scp`.
 
 ## Common CLI
 
@@ -192,7 +208,9 @@ python3 scripts/scnet.py --details --region <id> job <job-id>
 python3 scripts/scnet.py --region <id> wait <job-id> --interval 3 --wait-timeout 180
 ```
 
-`wait` polls internally and emits only the final result or timeout summary. OpenAPI live
+`wait` polls internally and emits only the final result or timeout summary. Dropped
+connections while polling are retried (at most three in a row); authentication and
+not-found errors surface immediately. OpenAPI live
 `COMPLETED` can also describe a recently cancelled job: until accounting confirms the state,
 output reports `FINALIZING`. Waiting may therefore include accounting update latency.
 Transfers return the target path and byte count; logs return only the requested lines.

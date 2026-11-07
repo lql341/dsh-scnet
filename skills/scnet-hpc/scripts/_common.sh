@@ -12,6 +12,9 @@ CLUSTER_DIR="$REPO_ROOT/clusters"
 die() { printf '错误: %s\n' "$1" >&2; exit 1; }
 info() { printf '  %s\n' "$1"; }
 
+# Quote a value for use inside a remote shell command (bash %q).
+remote_quote() { printf '%q' "$1"; }
+
 # Resolve the local Python 3 interpreter without assuming that every desktop
 # distribution exposes the command as `python3`. Desktop hosts may inject an
 # absolute path through DSH_SCNET_PYTHON; SCNET_PYTHON is the portable alias.
@@ -57,7 +60,7 @@ refresh_live_node_count() {
     # errexit/pipefail settings or discard the existing profile/cache value.
     local live=""
     live=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
-        "$CLUSTER_ID" "scontrol show partition ${PARTITION}" 2>/dev/null \
+        "$CLUSTER_ID" "scontrol show partition $(remote_quote "$PARTITION")" 2>/dev/null \
         | tr ' ' '\n' | sed -n 's/^TotalNodes=//p' | head -1) || live=""
 
     if [[ "$live" =~ ^[0-9]+$ ]] && [ "$live" -gt 0 ]; then
@@ -97,17 +100,17 @@ $(printf '%s\n' "$available" | sed 's/^/  /')"
     . "$conf"
 
     [ -n "${CLUSTER_ID:-}" ] || die "$conf 里 CLUSTER_ID 为空"
-    : "${SSH_PORT:=22}"
     : "${HOME_BASE:=/public/home}"
 
-    # SSH_HOST/SSH_PORT 应以 profile 为准。这里只作为兼容回退：
-    # 旧 profile 漏填时，从本机 ~/.ssh/config 动态补全，避免脚本直接失败。
+    # SSH_HOST/SSH_PORT 应以 profile 为准。这里只在 profile 漏填时回退到本机
+    # ~/.ssh/config：SSH_PORT 不能提前默认成 22，否则会遮蔽 ssh -G 解析出的真实端口。
     if [ -z "${SSH_HOST:-}" ]; then
         SSH_HOST="$(ssh -G "$CLUSTER_ID" 2>/dev/null | awk '/^hostname /{print $2; exit}')"
     fi
     if [ -z "${SSH_PORT:-}" ]; then
         SSH_PORT="$(ssh -G "$CLUSTER_ID" 2>/dev/null | awk '/^port /{print $2; exit}')"
     fi
+    : "${SSH_PORT:=22}"
     REMOTE_USER_DETECTED="$(ssh -G "$CLUSTER_ID" 2>/dev/null | awk '/^user /{print $2; exit}')"
     : "${REMOTE_USER_DETECTED:=}"
 
