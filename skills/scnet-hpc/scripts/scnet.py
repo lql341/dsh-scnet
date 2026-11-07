@@ -29,6 +29,8 @@ from scnet_config import (
     reset_openapi_metadata,
     reset_ssh_metadata,
     save_user_config,
+    save_ssh_alias,
+    ssh_alias_path,
 )
 from scnet_credentials import (
     CredentialError,
@@ -37,6 +39,7 @@ from scnet_credentials import (
     load_secure_credentials,
     normalize_credential,
     secure_store_name,
+    selected_account,
     store_openapi_credentials,
 )
 from scnet_sdk.cli import add_notebook_parser, execute_notebook
@@ -66,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--cluster", help="local cluster profile name")
+    parser.add_argument("--account", help="OpenAPI account alias for this invocation (overrides SCNET_OPENAPI_ACCOUNT)")
     parser.add_argument("--region", help="OpenAPI region ID or name")
     parser.add_argument("--scheduler-id", help="OpenAPI scheduler ID")
     parser.add_argument("--username", help="OpenAPI region username override")
@@ -1089,6 +1093,13 @@ def _print_setup_status(config: Mapping[str, Any]) -> None:
             )
     openapi = config.get("openapi")
     if isinstance(openapi, dict) and openapi:
+        accounts = openapi.get("accounts") or {}
+        if isinstance(accounts, dict) and accounts:
+            print("OpenAPI 账号别名：" + ", ".join(sorted(accounts)))
+        account = selected_account()
+        if account:
+            openapi = accounts.get(account, {}) if isinstance(accounts, dict) else {}
+            print(f"当前会话账号别名：{account}")
         regions = openapi.get("regions")
         regions = regions if isinstance(regions, dict) else {}
         enabled = openapi.get("enabled_region_ids")
@@ -1129,14 +1140,24 @@ def _setup_reset_panel(config: dict[str, Any]) -> dict[str, Any]:
     if not _ask_yes_no(f"确认重置“{selected}”？", default=False):
         raise BackendError("用户取消重置")
     if selected.startswith("OpenAPI 区域"):
-        reset_openapi_metadata()
-        config.pop("openapi", None)
-        if config.get("default_backend") == "openapi":
-            config["default_backend"] = "ssh"
-        save_user_config(config)
+        account = selected_account()
+        if account:
+            openapi = config.get("openapi", {})
+            if isinstance(openapi, dict):
+                accounts = openapi.get("accounts", {})
+                if isinstance(accounts, dict):
+                    accounts.pop(account, None)
+            save_user_config(config)
+        else:
+            reset_openapi_metadata()
+            config.pop("openapi", None)
+            if config.get("default_backend") == "openapi":
+                config["default_backend"] = "ssh"
+            save_user_config(config)
     elif selected.startswith("OpenAPI 安全"):
         try:
-            deleted, provider = delete_openapi_credentials()
+            account = selected_account()
+            deleted, provider = delete_openapi_credentials(account) if account else delete_openapi_credentials()
         except CredentialError as exc:
             raise BackendError(str(exc)) from exc
         print(
@@ -1195,6 +1216,7 @@ def setup_panel(
     if not profiles:
         raise BackendError("clusters/ 下没有 profile")
     current = load_user_config()
+    account = selected_account()
     print("\nSCNet HPC 配置/维护面板")
     print("=======================")
     print("自动探测区域、调度器和 SSH 元数据；只要求输入必要凭据。\n")
@@ -1215,7 +1237,8 @@ def setup_panel(
             "是否配置或刷新 OpenAPI？", default=default_backend == "openapi"
         )
     else:
-        default_backend = mode
+        # Configuring SSH access is not a request to change the default backend.
+        default_backend = current_default if mode == "ssh" else mode
         configure_ssh = mode == "ssh"
         configure_openapi = mode == "openapi"
 
@@ -1225,6 +1248,32 @@ def setup_panel(
     selected_cluster = str(current.get("cluster") or "")
 
     if configure_ssh:
+        new_alias_base = ""
+        new_alias_name = ""
+        alias_registered = False
+        if action == "new" and _ask_yes_no("是否为已有集群新增独立 SSH 用户别名？", default=False):
+            base_names = [item["name"] for item in profiles if (REPO_ROOT / "clusters" / f"{item['name']}.conf").is_file()]
+            new_alias_base = _choose("选择要复用连接参数的集群：", base_names)
+            new_alias_name = _ask("新 SSH 别名（例如 zzeshell-hz1）")
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", new_alias_name):
+                raise BackendError("SSH 别名只能包含字母、数字、点、下划线或横线。")
+            if new_alias_name in {item["name"] for item in profiles}:
+                raise BackendError("SSH 别名已注册；如需更新请使用 setup modify --mode ssh。")
+            base_profile = load_profile(REPO_ROOT, new_alias_base)[1]
+            alias_profile = {**base_profile, "CLUSTER_ID": new_alias_name}
+            ssh_config = Path.home() / ".ssh" / "config"
+            try:
+                lines = ssh_config.read_text(encoding="utf-8").splitlines()
+            except FileNotFoundError:
+                lines = []
+            defined = any(line.split()[:1] == ["Host"] and new_alias_name in line.split()[1:] for line in lines)
+            existing_alias = _resolved_ssh_connection(new_alias_name, alias_profile)
+            if existing_alias and defined:
+                if not existing_alias.get("key_path"):
+                    raise BackendError("该 SSH 别名已有连接但缺少可用私钥；请先检查 ~/.ssh/config。")
+                print("检测到该别名已配置 SSH；将只接管元数据，不覆盖原连接。")
+            elif defined or existing_alias:
+                raise BackendError("SSH 别名已有其他连接或被通配规则占用；请先检查 ~/.ssh/config。")
         existing_ssh = current.get("ssh", {})
         if not isinstance(existing_ssh, dict):
             existing_ssh = {}
@@ -1239,12 +1288,18 @@ def setup_panel(
         detected_connections = {
             name: value for name, value in detected_connections.items() if value
         }
+        if new_alias_name:
+            all_profile_names.append(new_alias_name)
+            if existing_alias:
+                detected_connections[new_alias_name] = existing_alias
         if action == "new":
             profile_names = [
                 name
                 for name in all_profile_names
                 if name not in existing_clusters and name not in detected_connections
             ]
+            if new_alias_name:
+                profile_names = [new_alias_name]
             if not profile_names:
                 raise BackendError(
                     "所有 SSH profiles 已配置或已被检测到；请使用 `setup modify`"
@@ -1266,8 +1321,9 @@ def setup_panel(
         )
         cluster = _choose("选择要配置或更新的 SSH 区域：", profile_names, default_cluster)
         selected_cluster = cluster
-        result["cluster"] = cluster
-        _, profile = load_profile(REPO_ROOT, cluster)
+        if not new_alias_name:
+            result["cluster"] = cluster
+        profile = alias_profile if new_alias_name else load_profile(REPO_ROOT, cluster)[1]
         _ssh_setup_help(cluster, profile)
         existing_profile = existing_clusters.get(cluster, {})
         if not isinstance(existing_profile, dict):
@@ -1287,7 +1343,7 @@ def setup_panel(
             detected_key = str(existing_profile.get("key_path") or "")
             if platform.system() == "Windows" and not detected_connection:
                 raise BackendError("尚未检测到 Windows OpenSSH 连接。请先按 references/setup.md 手工配置，或在 WSL2 运行 SSH 安装向导。")
-            if action == "modify" and detected_key:
+            if (action == "modify" or new_alias_name) and detected_key:
                 rotate = _ask_yes_no(
                     "是否轮换为新的 SSH 私钥？", default=False
                 )
@@ -1319,7 +1375,7 @@ def setup_panel(
             print("已按 --skip-connect 跳过私钥安装和 SSH 测试。")
         else:
             adopted = (
-                action == "modify"
+                (action == "modify" or bool(new_alias_name))
                 and bool(detected_connection)
                 and key_path == detected_connection.get("key_path")
             )
@@ -1352,19 +1408,45 @@ def setup_panel(
                     raise BackendError(
                         completed.stderr.strip() or "已有 SSH 连接测试失败"
                     )
+                source = key_path
+                if new_alias_name:
+                    original = _ask("下载的原始私钥路径（可选，用于记录有效期）", "")
+                    if original:
+                        import filecmp
+                        source = str(_private_key_path(original))
+                        if not Path(source).is_file() or not filecmp.cmp(source, key_path, shallow=False):
+                            raise BackendError("原始私钥与已安装密钥不同，未接管；请核对路径。")
                 clusters[cluster] = {
                     **existing_profile,
-                    **_ssh_key_metadata(cluster, key_path, username, installed_path=key_path),
+                    **_ssh_key_metadata(cluster, source, username, installed_path=key_path),
                     "adopted": True,
                 }
             else:
-                _run_setup_ssh(cluster, key_path, username)
+                if new_alias_name:
+                    try:
+                        save_ssh_alias(new_alias_name, new_alias_base)
+                    except ValueError as exc:
+                        raise BackendError(str(exc)) from exc
+                    alias_registered = True
+                try:
+                    _run_setup_ssh(cluster, key_path, username)
+                except BackendError:
+                    if alias_registered:
+                        ssh_alias_path(new_alias_name).unlink(missing_ok=True)
+                        alias_registered = False
+                    raise
                 clusters[cluster] = _ssh_key_metadata(
                     cluster, key_path, username
                 )
 
     if configure_openapi:
-        existing_openapi = current.get("openapi", {})
+        root_openapi = current.get("openapi", {})
+        if not isinstance(root_openapi, dict):
+            root_openapi = {}
+        existing_openapi = (
+            (root_openapi.get("accounts") or {}).get(account, {})
+            if account else {key: value for key, value in root_openapi.items() if key != "accounts"}
+        )
         if not isinstance(existing_openapi, dict):
             existing_openapi = {}
         if action == "new" and existing_openapi:
@@ -1506,10 +1588,10 @@ def setup_panel(
                 ):
                     try:
                         provider = store_openapi_credentials(
-                            api_user, access_key, secret_key
+                            api_user, access_key, secret_key, **({"account": account} if account else {})
                         )
                         expected = {"user": api_user, "access_key": access_key, "secret_key": secret_key}
-                        if load_secure_credentials() != expected:
+                        if (load_secure_credentials(account) if account else load_secure_credentials()) != expected:
                             raise CredentialError("保存后读回校验失败；尚不能确认凭据已持久保存。")
                         stored_provider = provider
                         print(f"OpenAPI 凭据已保存到 {provider}。")
@@ -1521,7 +1603,7 @@ def setup_panel(
             elif stored_provider == "environment":
                 print("凭据来源：当前进程环境变量；未另存到系统凭据库，重启后需由宿主重新注入。")
             else:
-                print(f"持久保存已验证：{stored_provider}；条目名 scnet-hpc-openapi。")
+                print(f"持久保存已验证：{stored_provider}；账号别名 {account or '默认'}（独立凭据条目）。")
                 if any(os.environ.get(key) for key in ("SCNET_OPENAPI_USER", "SCNET_OPENAPI_ACCESS_KEY", "SCNET_OPENAPI_SECRET_KEY")):
                     print("注意：当前 shell 仍有环境变量，它们优先于刚保存的凭据；请清除旧变量后运行 doctor。")
             selected_schedulers = selected.get("schedulers") or []
@@ -1530,7 +1612,7 @@ def setup_panel(
                 if len(selected_schedulers) == 1
                 else ""
             )
-            result["openapi"] = {
+            account_config = {
                 "platform_user": api_user,
                 "credential_provider": stored_provider or "not_saved",
                 "default_region_id": selected["region_id"],
@@ -1552,6 +1634,13 @@ def setup_panel(
                     for item in contexts
                 },
             }
+            if account:
+                root_openapi.setdefault("accounts", {})[account] = account_config
+                result["openapi"] = root_openapi
+            else:
+                # Preserve named accounts when refreshing the legacy/default account.
+                account_config["accounts"] = root_openapi.get("accounts", {})
+                result["openapi"] = account_config
             print(
                 "\nHPC OpenAPI 区域选择结果（凭据状态见上方）：\n"
                 f"  默认区域：{selected.get('name') or selected['region_id']}"
@@ -1563,13 +1652,18 @@ def setup_panel(
                 "  API 类型：HPC/Slurm 作业 API（非 Notebook API）"
             )
 
-    if selected_cluster:
+    if selected_cluster and not (configure_ssh and new_alias_name):
         result["cluster"] = selected_cluster
+    if configure_ssh and new_alias_name and not alias_registered:
+        try:
+            save_ssh_alias(new_alias_name, new_alias_base)
+        except ValueError as exc:
+            raise BackendError(str(exc)) from exc
     path = save_user_config(result)
     print(f"\n已保存非敏感配置：{path}")
     print(f"查看配置：{_local_cli_command('config')}")
     doctor_cluster = selected_cluster or str(current.get("cluster") or "")
-    arguments = ["--backend", default_backend]
+    arguments = ["--backend", "ssh" if configure_ssh and not configure_openapi else default_backend]
     if doctor_cluster:
         arguments.extend(["--cluster", doctor_cluster])
     print(f"下一步：{_local_cli_command(*arguments, 'doctor')}")
@@ -1731,6 +1825,14 @@ def doctor_report(
             credentials, credential_provider = None, None
             add("credential_store", False, str(exc))
         has_aksk = bool(credentials)
+        account = selected_account()
+        if account and credentials:
+            root = user_config.get("openapi", {})
+            accounts = root.get("accounts", {}) if isinstance(root, dict) else {}
+            saved = accounts.get(account, {}) if isinstance(accounts, dict) else {}
+            expected_user = saved.get("platform_user") if isinstance(saved, dict) else None
+            if expected_user and credentials["user"] != expected_user:
+                add("openapi_account", False, "会话账号的凭据用户名与区域配置不一致")
         add(
             "openapi_credentials",
             has_token or has_aksk,
@@ -1739,10 +1841,14 @@ def doctor_report(
             else (
                 f"检测到 AK/SK（{credential_provider}）"
                 if has_aksk
-                else "未检测到可用凭据；运行 setup new/modify --mode openapi，或同时注入三项环境变量"
+                else "未检测到该账号凭据；运行 setup new/modify --mode openapi，或同时注入三项环境变量"
             ),
         )
         openapi_config = user_config.get("openapi", {})
+        account = selected_account()
+        if account:
+            accounts = openapi_config.get("accounts", {}) if isinstance(openapi_config, dict) else {}
+            openapi_config = accounts.get(account, {}) if isinstance(accounts, dict) else {}
         requested_region = (requested_region or "").strip() or None
         requested_queues = [str(item) for item in (requested_queues or []) if str(item)]
         environment_region = os.environ.get("SCNET_OPENAPI_REGION_ID")
@@ -1901,7 +2007,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.timeout < 1 or args.timeout > 3600:
         parser.error("--timeout must be between 1 and 3600 seconds")
 
+    previous_account = os.environ.get("SCNET_OPENAPI_ACCOUNT")
+    if args.account is not None:
+        os.environ["SCNET_OPENAPI_ACCOUNT"] = args.account
     try:
+        account = selected_account()
         user_config = load_user_config()
         selected_cluster = args.cluster or str(user_config.get("cluster") or "") or None
         if args.operation == "backends":
@@ -1929,6 +2039,15 @@ def main(argv: list[str] | None = None) -> int:
             backend = create_backend(backend_name, context)
             options = vars(args).copy()
             openapi_config = user_config.get("openapi", {})
+            if account:
+                accounts = openapi_config.get("accounts", {}) if isinstance(openapi_config, dict) else {}
+                openapi_config = accounts.get(account, {}) if isinstance(accounts, dict) else {}
+            if backend_name == "openapi" and account and isinstance(openapi_config, dict):
+                expected_user = openapi_config.get("platform_user")
+                if expected_user and args.operation not in {"doctor", "capabilities"}:
+                    credentials, _ = load_openapi_credentials()
+                    if credentials and credentials["user"] != expected_user:
+                        raise BackendError("当前账号别名的凭据用户名与已保存的区域配置不一致；请检查环境变量或重新配置该别名。")
             if isinstance(openapi_config, dict):
                 apply_openapi_defaults(options, openapi_config)
             if args.operation == "download" and not options.get("local_path"):
@@ -1939,7 +2058,9 @@ def main(argv: list[str] | None = None) -> int:
                     raise BackendError(
                         "Notebook management requires the OpenAPI backend"
                     )
-                data = execute_notebook(args, context, user_config)
+                notebook_config = dict(user_config)
+                notebook_config["openapi"] = openapi_config
+                data = execute_notebook(args, context, notebook_config)
             elif args.dry_run:
                 if args.operation not in MUTATING_OPERATIONS:
                     raise BackendError(
@@ -2010,6 +2131,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"error: {exc}", file=sys.stderr)
         return 2
+    finally:
+        if args.account is not None:
+            if previous_account is None:
+                os.environ.pop("SCNET_OPENAPI_ACCOUNT", None)
+            else:
+                os.environ["SCNET_OPENAPI_ACCOUNT"] = previous_account
 
 
 if __name__ == "__main__":

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.17 - 2026-11-07
+
+- Add session-scoped OpenAPI accounts: `--account <alias>` or `SCNET_OPENAPI_ACCOUNT` selects a
+  separate credential-store item and separate region defaults, so concurrent agent sessions can
+  run against different platform accounts. A named alias never falls back to the unaliased item
+  or to another alias, and `doctor` reports a mismatch between the stored username and the
+  credentials in use.
+- Add independent SSH aliases: register an extra per-user alias for an existing cluster profile
+  in `~/.config/scnet-hpc/ssh/aliases/<alias>.json`, so two Linux users on one region can work
+  without editing repository profiles or repointing the shared `~/.ssh/config` entry.
+- Stop `setup --mode ssh` from changing the saved default backend, and reject inventing a cluster
+  name from a region.
+
 ## 0.6.16 - 2026-11-07
 
 - Make `limits` unambiguous across backends: OpenAPI `limits` is user/account quota, so

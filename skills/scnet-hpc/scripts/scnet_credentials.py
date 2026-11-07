@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -12,6 +13,21 @@ from typing import Any
 
 
 SERVICE = "scnet-hpc-openapi"
+
+
+def account_service(account: str = "") -> str:
+    """Keep legacy credentials separate from session-selected accounts."""
+    if not account:
+        return SERVICE
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", account):
+        raise CredentialError("账号别名只能包含字母、数字、点、下划线或横线（最多 64 字符）。")
+    return SERVICE + ":" + hashlib.sha256(account.encode("utf-8")).hexdigest()[:32]
+
+
+def selected_account() -> str:
+    account = os.environ.get("SCNET_OPENAPI_ACCOUNT", "")
+    account_service(account)
+    return account
 
 
 class CredentialError(RuntimeError):
@@ -42,7 +58,7 @@ def normalize_credential(value: str, label: str) -> str:
     return value
 
 
-def _windows_credential(action: str, payload: str = "", user: str = "") -> str | bool | None:
+def _windows_credential(action: str, payload: str = "", user: str = "", *, service: str = SERVICE) -> str | bool | None:
     """Use the current Windows user's Generic Credential store, without extra packages."""
     import ctypes
     from ctypes import wintypes
@@ -71,7 +87,7 @@ def _windows_credential(action: str, payload: str = "", user: str = "") -> str |
 
     if action == "read":
         item = pointer()
-        success = api.CredReadW(SERVICE, 1, 0, ctypes.byref(item))
+        success = api.CredReadW(service, 1, 0, ctypes.byref(item))
         if success:
             try:
                 return ctypes.string_at(item.contents.CredentialBlob, item.contents.CredentialBlobSize).decode("utf-8")
@@ -88,12 +104,12 @@ def _windows_credential(action: str, payload: str = "", user: str = "") -> str |
             raise CredentialError("凭据超出 Windows 凭据管理器容量，请检查是否粘贴了整个文件。")
         buffer = (ctypes.c_ubyte * len(encoded)).from_buffer_copy(encoded)
         item = Credential()
-        item.Type, item.TargetName, item.UserName = 1, SERVICE, user
+        item.Type, item.TargetName, item.UserName = 1, service, user
         item.CredentialBlobSize, item.CredentialBlob = len(encoded), buffer
         item.Persist = 2  # CRED_PERSIST_LOCAL_MACHINE: same user, across logon sessions.
         success = api.CredWriteW(ctypes.byref(item), 0)
     elif action == "delete":
-        success = api.CredDeleteW(SERVICE, 1, 0)
+        success = api.CredDeleteW(service, 1, 0)
     else:
         raise ValueError("unknown credential operation")
     if success:
@@ -138,10 +154,11 @@ def secure_store_name() -> str | None:
     return None
 
 
-def load_secure_credentials() -> dict[str, str] | None:
+def load_secure_credentials(account: str = "") -> dict[str, str] | None:
+    service = account_service(account)
     provider = secure_store_name()
     if provider == "Windows Credential Manager":
-        payload = _windows_credential("read")
+        payload = _windows_credential("read", **({"service": service} if account else {}))
         if payload is None:
             return None
         try:
@@ -150,9 +167,9 @@ def load_secure_credentials() -> dict[str, str] | None:
             raise CredentialError("Windows 中已保存的 OpenAPI 凭据格式无效，请运行 setup modify --mode openapi 重新配置。") from None
         return data if _valid(data) else None
     if provider == "macOS Keychain":
-        command = ["security", "find-generic-password", "-s", SERVICE, "-w"]
+        command = ["security", "find-generic-password", "-s", service, "-w"]
     elif provider == "Secret Service":
-        command = ["secret-tool", "lookup", "service", SERVICE]
+        command = ["secret-tool", "lookup", "service", service]
     else:
         return None
     try:
@@ -172,18 +189,20 @@ def load_secure_credentials() -> dict[str, str] | None:
 
 
 def load_openapi_credentials() -> tuple[dict[str, str] | None, str | None]:
+    account = selected_account()
     data = environment_credentials()
     if data:
         return data, "environment"
-    data = load_secure_credentials()
+    data = load_secure_credentials(account) if account else load_secure_credentials()
     if data:
         return data, secure_store_name()
     return None, None
 
 
 def store_openapi_credentials(
-    user: str, access_key: str, secret_key: str
+    user: str, access_key: str, secret_key: str, *, account: str = ""
 ) -> str:
+    service = account_service(account)
     data = {
         "user": normalize_credential(user, "平台用户名"),
         "access_key": normalize_credential(access_key, "AccessKey"),
@@ -194,7 +213,7 @@ def store_openapi_credentials(
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     provider = secure_store_name()
     if provider == "Windows Credential Manager":
-        _windows_credential("write", payload, data["user"])
+        _windows_credential("write", payload, data["user"], **({"service": service} if account else {}))
         return provider
     if provider == "macOS Keychain":
         command = [
@@ -202,9 +221,9 @@ def store_openapi_credentials(
             "add-generic-password",
             "-U",
             "-s",
-            SERVICE,
+            service,
             "-a",
-            user,
+            account or user,
             "-w",
             payload,
         ]
@@ -221,9 +240,8 @@ def store_openapi_credentials(
             "store",
             "--label=SCNet OpenAPI",
             "service",
-            SERVICE,
-            "user",
-            user,
+            service,
+            *(["user", user] if not account else []),
         ]
         completed = _credential_command(
             command,
@@ -245,14 +263,15 @@ def store_openapi_credentials(
     return str(provider)
 
 
-def delete_openapi_credentials() -> tuple[bool, str | None]:
+def delete_openapi_credentials(account: str = "") -> tuple[bool, str | None]:
+    service = account_service(account)
     provider = secure_store_name()
     if provider == "Windows Credential Manager":
-        return bool(_windows_credential("delete")), provider
+        return bool(_windows_credential("delete", **({"service": service} if account else {}))), provider
     if provider == "macOS Keychain":
-        command = ["security", "delete-generic-password", "-s", SERVICE]
+        command = ["security", "delete-generic-password", "-s", service]
     elif provider == "Secret Service":
-        command = ["secret-tool", "clear", "service", SERVICE]
+        command = ["secret-tool", "clear", "service", service]
     else:
         return False, None
     completed = _credential_command(
@@ -264,7 +283,7 @@ def delete_openapi_credentials() -> tuple[bool, str | None]:
     )
     if completed.returncode == 0:
         return True, provider
-    if load_secure_credentials() is None:
+    if load_secure_credentials(account) is None:
         return False, provider
     raise CredentialError(
         f"无法清除 {provider}（exit={completed.returncode}），请检查解锁状态。"

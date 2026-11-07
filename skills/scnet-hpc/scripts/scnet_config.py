@@ -21,6 +21,21 @@ def config_path() -> Path:
     return config_root() / "config.json"
 
 
+def ssh_alias_path(cluster: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", cluster):
+        raise ValueError("unsafe SSH alias name")
+    return config_root() / "ssh" / "aliases" / f"{cluster}.json"
+
+
+def save_ssh_alias(cluster: str, base_profile: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", base_profile):
+        raise ValueError("unsafe base profile name")
+    path = ssh_alias_path(cluster)
+    if path.exists():
+        raise ValueError("SSH alias already registered")
+    return _save_json_sidecar(path, {"base_profile": base_profile})
+
+
 def ssh_profile_path(cluster: str) -> Path:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", cluster):
         raise ValueError("unsafe cluster profile name")
@@ -151,13 +166,14 @@ def reset_all_metadata() -> list[Path]:
     removed: list[Path] = []
     targets = [config_path(), openapi_cache_path()]
     targets.extend(sorted((config_root() / "ssh").glob("*.json")))
+    targets.extend(sorted((config_root() / "ssh" / "aliases").glob("*.json")))
     for path in targets:
         try:
             path.unlink()
             removed.append(path)
         except FileNotFoundError:
             pass
-    for directory in (config_root() / "ssh", config_root()):
+    for directory in (config_root() / "ssh" / "aliases", config_root() / "ssh", config_root()):
         try:
             directory.rmdir()
         except OSError:

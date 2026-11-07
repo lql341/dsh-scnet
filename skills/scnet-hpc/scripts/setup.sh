@@ -433,6 +433,14 @@ case "$BACKEND" in
     *) die "backend 必须是 ssh、openapi 或 both" ;;
 esac
 
+# The Python panel can create private per-user SSH aliases without modifying
+# repository profiles or replacing the existing SSH user for a cluster.
+if [ "$BACKEND" = ssh ] && [ -n "$PYTHON_BIN" ] && [ -z "$CLUSTER" ]; then
+    ssh_args=(setup "$ACTION" --mode ssh)
+    [ "$SKIP_CONNECT" = yes ] && ssh_args+=(--skip-connect)
+    exec "$PYTHON_BIN" "$SCRIPT_DIR/scnet.py" "${ssh_args[@]}"
+fi
+
 # Check requirements before installing keys or changing local configuration.
 if [ "$BACKEND" = openapi ] || [ "$BACKEND" = both ]; then
     [ -n "$PYTHON_BIN" ] || die "OpenAPI 配置需要 Python 3；请设置 DSH_SCNET_PYTHON 或 SCNET_PYTHON，或安装 python3"
@@ -476,6 +484,9 @@ if [ "$BACKEND" = ssh ] || [ "$BACKEND" = both ]; then
 fi
 
 DEFAULT_BACKEND="$BACKEND"
+if [ "$BACKEND" = ssh ]; then
+    DEFAULT_BACKEND="${saved_backend:-openapi}"
+fi
 if [ "$BACKEND" = both ]; then
     backend_default=1
     [ "$saved_backend" != ssh ] || backend_default=2
