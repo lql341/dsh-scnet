@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from pathlib import Path
 
+from scnet_config import config_root, ssh_alias_path
 from .base import BackendError
 
 
@@ -46,6 +48,21 @@ def parse_profile(path: Path) -> dict[str, str]:
     return values
 
 
+def _alias_base(repo_root: Path, name: str) -> str | None:
+    try:
+        data = json.loads(ssh_alias_path(name).read_text(encoding="utf-8"))
+    except (OSError, RuntimeError, ValueError):
+        # No home directory (empty environment) or an unreadable alias file must
+        # not break listing the repository's own profiles.
+        return None
+    base = data.get("base_profile") if isinstance(data, dict) else None
+    if not isinstance(base, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", base):
+        return None
+    if not (repo_root / "clusters" / f"{base}.conf").is_file() or base.startswith("_"):
+        return None
+    return base
+
+
 def list_profiles(repo_root: Path) -> list[dict[str, str]]:
     cluster_dir = repo_root / "clusters"
     result: list[dict[str, str]] = []
@@ -61,18 +78,42 @@ def list_profiles(repo_root: Path) -> list[dict[str, str]]:
                 "default_backend": profile.get("DEFAULT_BACKEND", "openapi"),
             }
         )
+    for path in _local_alias_files():
+        if (cluster_dir / f"{path.stem}.conf").exists():
+            continue
+        base = _alias_base(repo_root, path.stem)
+        if base:
+            result.append({
+                "name": path.stem, "cluster_id": path.stem,
+                "description": f"SSH alias of {base}", "default_backend": "openapi",
+            })
     return result
+
+
+def _local_alias_files() -> list[Path]:
+    """Local SSH aliases are optional; an unresolvable home must not raise."""
+    try:
+        return sorted((config_root() / "ssh" / "aliases").glob("*.json"))
+    except (OSError, RuntimeError):
+        return []
 
 
 def load_profile(repo_root: Path, name: str | None) -> tuple[str | None, dict[str, str]]:
     profiles = list_profiles(repo_root)
     if name:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+            raise BackendError("unsafe cluster profile name")
         path = repo_root / "clusters" / f"{name}.conf"
-        if not path.is_file():
-            available = ", ".join(item["name"] for item in profiles) or "(none)"
-            raise BackendError(f"unknown cluster profile {name!r}; available: {available}")
-        return name, parse_profile(path)
+        if path.is_file():
+            return name, parse_profile(path)
+        base = _alias_base(repo_root, name)
+        if base:
+            profile = parse_profile(repo_root / "clusters" / f"{base}.conf")
+            profile["CLUSTER_ID"] = name
+            profile["CLUSTER_DESC"] = f"{profile.get('CLUSTER_DESC', base)} (SSH alias {name})"
+            return name, profile
+        available = ", ".join(item["name"] for item in profiles) or "(none)"
+        raise BackendError(f"unknown cluster profile {name!r}; available: {available}")
     if len(profiles) == 1:
-        selected = profiles[0]["name"]
-        return selected, parse_profile(repo_root / "clusters" / f"{selected}.conf")
+        return load_profile(repo_root, profiles[0]["name"])
     return None, {}

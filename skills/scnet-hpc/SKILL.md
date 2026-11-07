@@ -31,6 +31,8 @@ available through the API. Never silently switch backends.
   job generation, or submission. Query the selected backend for live queues, limits, and state.
 - SSH setup is profile-scoped; record usernames and key expiry metadata per profile. OpenAPI
   credentials are platform-scoped and discover all authorized regions/schedulers automatically.
+  For concurrent agent accounts, use session-scoped `SCNET_OPENAPI_ACCOUNT` with saved aliases;
+  never infer an account from a region.
 - OpenAPI may enable multiple regions locally, but every mutating operation must resolve to one
   explicit/default target region.
 

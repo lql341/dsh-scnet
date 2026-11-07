@@ -47,7 +47,13 @@ resolve_python() {
 }
 
 list_clusters() {
-    find "$CLUSTER_DIR" -maxdepth 1 -name '*.conf' ! -name '_*' -exec basename {} .conf \; 2>/dev/null | sort
+    local alias_dir="${XDG_CONFIG_HOME:-$HOME/.config}/scnet-hpc/ssh/aliases"
+    {
+        find "$CLUSTER_DIR" -maxdepth 1 -name '*.conf' ! -name '_*' -exec basename {} .conf \; 2>/dev/null
+        if [ -d "$alias_dir" ]; then
+            find "$alias_dir" -maxdepth 1 -name '*.json' -exec basename {} .json \; 2>/dev/null
+        fi
+    } | sort -u
 }
 
 refresh_live_node_count() {
@@ -91,13 +97,38 @@ $(printf '%s\n' "$available" | sed 's/^/  /')"
         fi
     fi
 
+    [[ "$want" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "集群别名包含不安全字符"
     local conf="$CLUSTER_DIR/$want.conf"
+    local alias_path="${XDG_CONFIG_HOME:-$HOME/.config}/scnet-hpc/ssh/aliases/$want.json"
+    local base=""
+    if [ ! -f "$conf" ] && [ -f "$alias_path" ]; then
+        local python_bin
+        python_bin=$(resolve_python) || die "本地 SSH 别名需要 Python 3"
+        base=$("$python_bin" - "$alias_path" "$CLUSTER_DIR" <<'PYALIAS'
+import json, pathlib, re, sys
+try:
+    value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))['base_profile']
+    if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', value) or value.startswith('_'):
+        raise ValueError('unsafe base')
+    if not (pathlib.Path(sys.argv[2]) / (value + '.conf')).is_file():
+        raise ValueError('missing base')
+except (OSError, ValueError, KeyError, TypeError):
+    sys.exit(1)
+print(value)
+PYALIAS
+        ) || die "本地 SSH 别名指向无效的集群 profile"
+        conf="$CLUSTER_DIR/$base.conf"
+    fi
     [ -f "$conf" ] || die "找不到 profile: $conf
 可用的：
 $(printf '%s\n' "$available" | sed 's/^/  /')"
 
     # shellcheck disable=SC1090
     . "$conf"
+    if [ -n "$base" ]; then
+        CLUSTER_ID="$want"
+        CLUSTER_DESC="${CLUSTER_DESC:-$base}（独立 SSH 别名）"
+    fi
 
     [ -n "${CLUSTER_ID:-}" ] || die "$conf 里 CLUSTER_ID 为空"
     : "${HOME_BASE:=/public/home}"

@@ -13,8 +13,21 @@
 3. **运行环境**：macOS/Linux/WSL2 可运行自动安装脚本。Windows 原生 OpenSSH 的配置和
    WSL2 里的 `~/.ssh` 不共享，在哪个环境运行作业工具，就在该环境配置 SSH。
 
-在 macOS/Linux/WSL2 运行 `./scripts/setup.sh new --backend ssh`，或
-`python3 scripts/scnet.py setup new --mode ssh`。路径带空格时可使用外层引号；向导只需要路径，
+在 macOS/Linux/WSL2 运行 `python3 scripts/scnet.py setup new --mode ssh`；
+Bash 面板也可运行 `./scripts/setup.sh new --backend ssh`，但可能更新默认 backend 选择。
+Python 的 `--mode ssh` 仅配置 SSH，
+不会改变已有默认 backend（通常仍为 OpenAPI）；实际使用 SSH 时显式传 `--backend ssh`。
+SSH profile 的用户名和密钥与 `SCNET_OPENAPI_ACCOUNT` 别名无关，不会跟随 OpenAPI 账号自动切换。
+同一集群需要多个 SSH 用户时，运行 `python3 scripts/scnet.py setup new --mode ssh`，
+选择“为已有集群新增独立 SSH 用户别名”，选择基础集群并输入新别名。面板会把别名与基础
+profile 的关联保存在本机 `~/.config/scnet-hpc/ssh/aliases/<别名>.json`（不含密钥、用户名或
+私人路径），为别名单独安装私钥和 SSH Host；旧集群别名和默认 OpenAPI 不变。
+已经手工配置的别名也可经此流程接管：面板核对现有连接并测试，不覆盖原私钥。
+完成后使用 `python3 scripts/scnet.py --backend ssh --cluster <别名> doctor` 或 `queues`；
+命令行全局参数必须放在操作之前。需要同时维护多个 SSH 用户时，每次显式传 `--cluster`，
+不要假设 `SCNET_OPENAPI_ACCOUNT` 自动选择 SSH 用户。Bash 面板在未指定 `--cluster`、
+且安装了 Python 3 时会进入相同的 Python SSH 面板。
+路径带空格时可使用外层引号；向导只需要路径，
 不要粘贴私钥正文。安装前会显示主机、端口、目标位置，安装后显示实际生效的 `ssh -G` 参数。
 
 安装位置为 `~/.ssh/id_rsa_<集群>`，配置为 `~/.ssh/config`。不同的旧私钥先备份；只更新

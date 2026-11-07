@@ -49,6 +49,22 @@ Saving is optional and verified by reading the item back; if it fails the panel 
 `not_saved` instead of claiming success. `setup status` shows metadata and the credential source
 the current process actually sees; `setup reset` can delete the store item separately.
 
+### Multiple accounts, selected per session
+
+`--account <alias>` (or `SCNET_OPENAPI_ACCOUNT` in the session environment) selects a separate
+credential-store item and separate region defaults; it never changes a global active account.
+Configure each alias once in your own terminal:
+
+```bash
+python3 scripts/scnet.py --account team-a setup new --mode openapi
+python3 scripts/scnet.py --account team-b setup new --mode openapi   # or setup modify
+```
+
+Sessions may then run concurrently with `SCNET_OPENAPI_ACCOUNT=team-a` / `team-b`; `--account`
+overrides the session variable for one invocation. A named alias never falls back to the unaliased
+item (`scnet-hpc-openapi`) or to another alias, and environment-injected USER/ACCESS_KEY/SECRET_KEY
+still win as a complete set. With an alias selected, `setup reset` affects only that alias.
+
 ### Environment injection
 
 Set all three (a partial set is rejected so two accounts cannot be mixed); environment values
