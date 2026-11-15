@@ -45,7 +45,7 @@ Read [references/openapi.md](references/openapi.md) for OpenAPI credentials and 
 - Python/modules/offline dependencies: `references/environment.md`
 - Scheduler/runtime/accelerator diagnosis: `references/troubleshooting.md`
 - Add or refresh profiles: `references/adding-cluster.md`
-- Hygon DCU/DTK/HIP/profiling: `references/hygon-dcu-development.md`
+- Hygon DCU/SourceFind/DTK/DAS/HIP/profiling: `references/hygon-dcu-development.md`
 - Compatibility reports: `references/software-compatibility.md`
 - English instructions: `references/quickstart-en.md`
 

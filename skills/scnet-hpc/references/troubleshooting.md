@@ -54,11 +54,10 @@ sbatch: error: QOSMinGRES
 
 三种可能：
 
-1. **在登录节点跑 torch** —— 郑州集群最近实测是缺 `libgalaxyhip.so.5`，旧环境
-   报过 `libmsgpackc.so.2`；即使 `module load` 之后也 import 不了。必须用
-   `srun`/`sbatch`。
-2. **忘了 `module load`** —— venv 激活前必须先
-   `module load compiler/gcc/9.3.0 compiler/dtk/26.04`。
+1. **在登录节点跑 torch** —— 有些集群即使在登录节点加载模块后也无法 import，
+   必须到加速器节点用 `srun`/`sbatch` 验证；具体限制查 profile 的
+   `LOGIN_NODE_MISSING_LIBS`。
+2. **忘了 `module load`** —— 先加载 profile 中的 `MODULE_LOADS`，再激活 venv。
 3. **顺序错了** —— 先激活 venv 再 module load 也会失败，顺序必须是 module 在前。
 
 ### `Name or service not known` / `Hugging Face Hub is in offline mode`
@@ -81,11 +80,12 @@ httpcore.ConnectError: [Errno -2] Name or service not known
 
 ### `cannot get address for 'hipDrvLaunchKernelEx' from libamdhip64.so`
 
-Triton。DTK 26.04 的 HIP 运行时缺上游 ROCm 7 的 API，Triton 的 AMD backend 加载
-即失败。该软件栈不能使用此 Triton 路径，依赖对应 Triton kernel 的框架也不适用（SGLang FP8、vLLM ROCm
-MoE、transformers finegrained-fp8）。
+Triton 的 AMD backend 依赖 HIP 运行时 API。若当前 DTK 缺少该符号，加载即失败；
+这不是 kernel 调参问题。依赖 Triton 的 SGLang FP8、vLLM ROCm MoE 或
+transformers finegrained-fp8 路径也不可用。只有目标节点确认的 DTK/架构组合，
+才能据此判定兼容性。
 
-郑州集群最近还会先报另一种缺库：
+某些集群还会先报另一种缺库：
 
 ```
 ImportError: libgcvm.so.17git: cannot open shared object file
@@ -95,7 +95,8 @@ ImportError: libgcvm.so.17git: cannot open shared object file
 
 ### `torch._scaled_mm is only supported on CUDA devices with compute capability >= 9.0 or 8.9, or ROCm MI300+`
 
-gfx936 不支持硬件 FP8 计算。需要软件反量化（把 FP8 权重转成 BF16 再算）。
+这是目标架构或框架缺少硬件 FP8 路径的报错，不要从错误里的 CUDA/MI300 型号反推。
+用 `gcnArchName`/`gfx` 确认架构，并评估软件反量化、BF16/FP16 或 CPU 路径。
 
 ### 退出码 53，且**完全没有日志文件**
 
@@ -129,30 +130,33 @@ ROCM_PATH=未设置
 ### python exit=0      ← 作业「成功」了
 ```
 
-该现象可能返回退出码 0，因此还需检查模块环境变量和探针输出。该行为已在昆山集群观测。
+该现象可能返回退出码 0，因此还需检查模块环境变量和探针输出。是否必须使用
+login shell 由集群决定，以计算节点探针为准。
 
 处理方法：shebang 用 `#!/bin/bash -l`，或在 heredoc 内包一层 `bash -l`。
 `scripts/new-job.sh` 生成的脚本已经用 `bash -l`。
 
 自检：作业里打印 `echo "ROCM_PATH=${ROCM_PATH:-未设置}"`，未设置就说明没生效。
 
-### `python3: command not found`（昆山计算节点）
+### `python3: command not found`
 
-昆山计算节点 `module purge` 后没有 `python3` 命令，裸 `python` 是 Python 2，
+部分计算节点清理环境后没有 `python3`，裸 `python` 还可能是 Python 2，
 会再报：
 
 ```
 SyntaxError: Non-ASCII character '\xe5' ... no encoding declared
 ```
 
-处理方法：作业脚本里显式加载 Python 3 module：
+处理方法：加载 profile 中记录的 `PYTHON_MODULE`，没有记录时从 `module avail`
+选择目标节点可用的 Python 3：
 
 ```bash
-module load python/3.8.10
+module load <PYTHON_MODULE>
 ```
 
 `scripts/run-compute-probe.sh` 会自动从 `module avail` 探测 `python/3.*` 模块，
-但普通业务作业仍需在 `MODULE_LOADS` 或 `PYTHON_MODULE` 里带上。
+但普通业务作业仍需在 `MODULE_LOADS` 或 `PYTHON_MODULE` 里带上。具体模块不写进
+公共示例，以免把一个集群的版本套用到其他集群。
 
 ### `TIMEOUT`
 

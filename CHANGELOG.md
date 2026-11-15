@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.18 - 2026-11-15
+
+- Expand the Hygon DCU reference into a task-oriented development index covering SourceFind,
+  DTK, DAS, HIP, CUDA migration, math and communication libraries, profiling, containers, and
+  cluster verification. Clearly distinguish the DAS application stack from profiling tools and
+  document which ROCm upstream material can be reused.
+- Keep global environment and troubleshooting guidance cluster-neutral: resolve module and Python
+  selections from profiles, and state observed accelerator limitations with their version scope.
+- Restrict workflow-triggered releases to successful validation runs from `main` pushes.
+
 ## 0.6.17 - 2026-11-07
 
 - Add session-scoped OpenAPI accounts: `--account <alias>` or `SCNET_OPENAPI_ACCOUNT` selects a

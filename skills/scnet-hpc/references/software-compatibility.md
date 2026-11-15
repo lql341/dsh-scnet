@@ -37,11 +37,15 @@ GPU-aware on/off 对照。单节点验证可先固定共享内存与 self 传输
 单卡问题规模扫描、固定规模的 1/2/单节点全卡强扩展、GPU-aware on/off 对照、
 峰值内存/显存，以及每项测试的退出码和完整日志。性能通过不能替代正确性验证。
 
-### 已验证的典型边界
+### 已观测的典型边界
 
-- **gfx936 / BW1000**：Triton、硬件 FP8 `torch._scaled_mm`、部分 bitsandbytes INT8 路径可能不可用；纯 PyTorch 软件反量化可作为兼容路径，但需要单独做性能和精度验证。
-- **gfx906 / Z100**：CentOS 7.6 的 glibc 2.17 会限制 manylinux wheel 版本；安装 Python 软件时优先选 manylinux2014 / manylinux_2_17 兼容包。MinerU 场景中，Python 3.10 + onnxruntime 1.16.3 是已验证方向，magika 版本/API 需要随源码适配。
+- **gfx936 / BW1000**：已有节点上观察到 Triton、硬件 FP8 `torch._scaled_mm`、部分 bitsandbytes INT8 路径不可用；这些结论绑定当时的 DTK、框架和包版本，换版本后重新探测。纯 PyTorch 软件反量化是可选兼容路径，仍需验证精度和性能。
+- **gfx906 / Z100**：已有 CentOS 7.6 节点受 glibc 2.17 限制，安装 Python 软件时优先选 manylinux2014 / manylinux_2_17 兼容包。MinerU 的 Python 3.10 + onnxruntime 1.16.3 是已观测方向，magika 版本/API 需要随源码适配。
 - **GROMACS HIP**：先验证 CMake 最低版本、DTK 的 `lib`/`lib64` CMake 路径、目标架构、FFTW 预置和 SIMD；CUDA 兼容层与原生 HIP 的性能不可直接互相推断。
+
+这些是验证线索，不是跨 DTK 版本或全部 DCU 节点的兼容性承诺。精确限制应写入对应
+集群 profile 的 `KNOWN_LIMITATIONS`，官方资料入口见
+[`hygon-dcu-development.md`](hygon-dcu-development.md)。
 
 ### 作业验证模板
 
