@@ -1,6 +1,5 @@
-- Run concurrent agent sessions under different OpenAPI accounts with `--account` /
-  `SCNET_OPENAPI_ACCOUNT`; each alias keeps its own secure-store item and region defaults and
-  never falls back to another account.
-- Register independent SSH aliases for an existing cluster, so several Linux users on one region
-  can be configured without editing repository profiles.
-- `setup --mode ssh` no longer changes the saved default backend.
+- Add a task-oriented Hygon DCU development index for SourceFind, DTK, DAS, HIP, reusable ROCm
+  documentation, profiling, and compute-node validation, with explicit adaptation boundaries.
+- Make accelerator module and troubleshooting guidance profile-driven and qualify observed
+  compatibility limits by DTK, framework, package, and target architecture.
+- Publish only from successful validation runs triggered by pushes to `main`.

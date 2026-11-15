@@ -4,17 +4,16 @@
 
 DSH-SCNet (`dsh-scnet` on npm) is a community-maintained DSH bundle for operating Supercomputing Network (SCNet). It packages the source [`scnet-hpc`](https://github.com/lql341/scnet-hpc) Skill, profile-aware utilities, and bounded tools for SSH, Slurm, OpenAPI files, regional resources, and Notebook discovery.
 
-Current release: **0.6.17**
+Current release: **0.6.18**
 
 <!-- scnet-release:start -->
-## 0.6.17 highlights
+## 0.6.18 highlights
 
-- Run concurrent agent sessions under different OpenAPI accounts with `--account` /
-  `SCNET_OPENAPI_ACCOUNT`; each alias keeps its own secure-store item and region defaults and
-  never falls back to another account.
-- Register independent SSH aliases for an existing cluster, so several Linux users on one region
-  can be configured without editing repository profiles.
-- `setup --mode ssh` no longer changes the saved default backend.
+- Add a task-oriented Hygon DCU development index for SourceFind, DTK, DAS, HIP, reusable ROCm
+  documentation, profiling, and compute-node validation, with explicit adaptation boundaries.
+- Make accelerator module and troubleshooting guidance profile-driven and qualify observed
+  compatibility limits by DTK, framework, package, and target architecture.
+- Publish only from successful validation runs triggered by pushes to `main`.
 <!-- scnet-release:end -->
 
 > This is an independent community project. It is compatible with DeepSeek Harness but is not an official DeepSeek product and does not imply endorsement, partnership, or authorization by DeepSeek.

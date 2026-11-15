@@ -32,15 +32,16 @@ ssh <集群> 'sacctmgr show qos where name=<QOS名> format=Name,MinTRES%30,MaxTR
 
 ## 加速器软件栈
 
-国产超算的加速器 SDK 通常通过 module 加载，profile 的 `MODULE_LOADS` 记录了
-需要 load 的模块。以海光 DTK 为例：
+国产超算的加速器 SDK 通常通过 module 加载。先从 profile 读取实际模块组合，
+不要从其他集群复制模块名或版本：
 
 ```bash
-module load compiler/gcc/9.3.0 compiler/dtk/26.04
+module load <MODULE_LOADS>
 ```
 
-DTK 是海光对 ROCm 的发行版，含 HIP、rocBLAS、hipBLASLt、MIOpen、RCCL 等，
-把 ROCm 的部分库改了名（如 `libgalaxyhip.so` 对应 `libamdhip64.so`）。
+DTK 是海光对 ROCm 的发行版，含 HIP、编译器、运行时、数学库和通信库。它复用部分
+ROCm API，但库名、版本和可用能力仍由目标 DTK 决定。资料入口和 ROCm 复用边界见
+[`hygon-dcu-development.md`](hygon-dcu-development.md)。
 
 列出可用模块：
 
@@ -78,11 +79,14 @@ source ~/<DEFAULT_VENV>/bin/activate
 ImportError: libgalaxyhip.so.5: cannot open shared object file
 ```
 
-昆山计算节点默认没有 `python3` 命令，需额外加载：
+如果计算节点没有 `python3`，先使用 profile 中的 `PYTHON_MODULE`：
 
 ```bash
-module load python/3.8.10
+module load <PYTHON_MODULE>
 ```
+
+字段为空时，再用 `module avail` 选择 Python 3 模块，并在计算节点验证
+`command -v python3`。不要把某个集群的 Python module 名当作全局默认值。
 
 ## 厂商预编译的 wheel
 
